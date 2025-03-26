@@ -1,152 +1,118 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, RefreshControl } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { router } from 'expo-router';
-import { LogOut, CreditCard, Settings, User as UserIcon, Award, Heart, BookOpen, Share2 } from 'lucide-react-native';
+import { LogOut, User as UserIcon, Award, Heart, BookOpen, Share2 } from 'lucide-react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
-import React from 'react';
 import Purchases from 'react-native-purchases';
+import React from 'react'; // 👈 fixes UMD global error
 
 export default function ProfileScreen() {
   const { user, userProfile, signOut, loading } = useAuth();
-  const [stats, setStats] = useState({
-    discovered: 0,
-    favorites: 0,
-    points: 0
-  });
+  const [stats, setStats] = useState({ discovered: 0, favorites: 0, points: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [membershipStatus, setMembershipStatus] = useState('Loading...');
 
   useEffect(() => {
     if (user) {
       fetchUserStats();
+      fetchMembershipStatus();
     }
   }, [user]);
 
   const fetchUserStats = async () => {
-    if (!user) return;
-    
     try {
       setStatsLoading(true);
-      
-      // Fetch sightings count
-      const { data: sightingsData, error: sightingsError } = await supabase
+      const { data: sightingsData = [] } = await supabase
         .from('sightings')
         .select('creature_id')
-        .eq('user_id', user.id);
-        
-      if (sightingsError) throw sightingsError;
-      
-      // Get unique creatures sighted
-      const uniqueCreaturesSighted = [...new Set(sightingsData.map(s => s.creature_id))];
-      
-      // Fetch wishlist count
-      const { data: wishlistData, error: wishlistError } = await supabase
+        .eq('user_id', user!.id);
+
+      const uniqueCreaturesSighted = [...new Set(sightingsData!.map(s => s.creature_id))];
+      const { data: wishlistData = [] } = await supabase
         .from('wishlists')
         .select('id')
-        .eq('user_id', user.id);
-        
-      if (wishlistError) throw wishlistError;
-      
-      // Calculate total points from sighted creatures
+        .eq('user_id', user!.id);
+
       let totalPoints = 0;
       if (uniqueCreaturesSighted.length > 0) {
-        const { data: pointsData, error: pointsError } = await supabase
+        const { data: pointsData = [] } = await supabase
           .from('creatures')
           .select('points')
           .in('id', uniqueCreaturesSighted);
-          
-        if (pointsError) throw pointsError;
-        
-        totalPoints = pointsData.reduce((sum, creature) => sum + creature.points, 0);
+
+        totalPoints = pointsData?.reduce((sum, creature) => sum + creature.points, 0) ?? 0;
       }
-      
+
       setStats({
         discovered: uniqueCreaturesSighted.length,
-        favorites: wishlistData.length,
+        favorites: wishlistData?.length ?? 0,
         points: totalPoints
       });
 
-      // Check and update achievements
-      const newAchievements = await checkAndUpdateAchievements(user.id);
-      if (newAchievements > 0) {
-        // Optionally show a notification that new achievements were unlocked
-        console.log(`Unlocked ${newAchievements} new achievements!`);
-      }
-    } catch (error) {
-      console.error('Error fetching user stats:', error);
+      await checkAndUpdateAchievements(user!.id);
+    } catch (err) {
+      console.error('Stats error:', err);
     } finally {
       setStatsLoading(false);
     }
   };
 
-  const onRefresh = useCallback(async () => {
-    if (!user) return;
-    
-    setRefreshing(true);
+  const fetchMembershipStatus = async () => {
     try {
-      await fetchUserStats();
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    } finally {
-      setRefreshing(false);
+      const customerInfo = await Purchases.getCustomerInfo();
+      const pro = customerInfo.entitlements.active['pro'];
+      if (pro?.willRenew) {
+        setMembershipStatus('Paid Subscription');
+      } else if (pro?.isSandbox && pro?.periodType === 'TRIAL') {
+        setMembershipStatus('Free Trial');
+      } else {
+        setMembershipStatus('Free Account');
+      }
+    } catch (err) {
+      setMembershipStatus('Free Account');
     }
-  }, [user]);
+  };
 
-  // If loading, show a loading indicator
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchUserStats();
+    await fetchMembershipStatus();
+    setRefreshing(false);
+  }, []);
+
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0077B6" />
-      </View>
-    );
+    return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#0077B6" /></View>;
   }
 
-  // If no user is logged in, redirect to login
   if (!user) {
     router.replace('/auth/login');
     return null;
   }
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor="#0077B6"
-          colors={['#0077B6']}
-          progressBackgroundColor="#2A2A2A"
-        />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
           {userProfile?.avatar_url ? (
-            <Image 
-              source={{ uri: userProfile.avatar_url }} 
-              style={styles.avatarImage}
-            />
+            <Image source={{ uri: userProfile.avatar_url }} style={styles.avatarImage} />
           ) : (
-            <Text style={styles.avatarText}>
-              {userProfile?.full_name 
-                ? userProfile.full_name.charAt(0).toUpperCase() 
-                : user.email?.charAt(0).toUpperCase()}
-            </Text>
+            <Text style={styles.avatarText}>{userProfile?.full_name?.[0] || user.email?.[0]}</Text>
           )}
         </View>
         <Text style={styles.name}>{userProfile?.full_name || 'Sea Explorer'}</Text>
         <Text style={styles.email}>{user.email}</Text>
-        
+
         <View style={styles.membershipBadge}>
-          <Text style={styles.membershipText}>
-            {userProfile?.membership_tier === 'premium' ? 'Premium Member' : 'Free Account'}
-          </Text>
+          <Text style={styles.membershipText}>{membershipStatus}</Text>
         </View>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={styles.shareProfileButton}
           onPress={() => router.push('/share-profile')}
         >
@@ -157,19 +123,17 @@ export default function ProfileScreen() {
 
       <View style={styles.statsContainer}>
         {statsLoading ? (
-          <ActivityIndicator size="small" color="#0077B6" style={styles.statsLoading} />
+          <ActivityIndicator size="small" color="#0077B6" />
         ) : (
           <>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{stats.discovered}</Text>
               <Text style={styles.statLabel}>Discovered</Text>
             </View>
-            <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{stats.favorites}</Text>
               <Text style={styles.statLabel}>Favorites</Text>
             </View>
-            <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{stats.points}</Text>
               <Text style={styles.statLabel}>Points</Text>
@@ -180,64 +144,40 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
-        
-        <TouchableOpacity 
-          style={styles.menuItem}
-          onPress={() => router.push('/account/edit-profile')}
-        >
+
+        <TouchableOpacity onPress={() => router.push('/account/edit-profile')} style={styles.menuItem}>
           <UserIcon size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Edit Profile</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.menuItem}>
-          <CreditCard size={20} color="#0077B6" />
-          <Text style={styles.menuItemText}>Membership</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.menuItem}>
-          <Settings size={20} color="#0077B6" />
-          <Text style={styles.menuItemText}>Settings</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Collections</Text>
-        
-        <TouchableOpacity 
-          style={styles.menuItem}
-          onPress={() => router.push('/wishlist')}
-        >
+
+        <TouchableOpacity onPress={() => router.push('/wishlist')} style={styles.menuItem}>
           <Heart size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Favorites</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.menuItem}
-          onPress={() => router.push('/achievements')}
-        >
+
+        <TouchableOpacity onPress={() => router.push('/achievements')} style={styles.menuItem}>
           <Award size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Achievements</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.menuItem}
-          onPress={() => router.push('/sightings')}
-        >
+
+        <TouchableOpacity onPress={() => router.push('/sightings')} style={styles.menuItem}>
           <BookOpen size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Your Sightings</Text>
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity 
-        style={styles.signOutButton} 
-        onPress={signOut}
-      >
+      <TouchableOpacity onPress={signOut} style={styles.signOutButton}>
         <LogOut size={20} color="#fff" />
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

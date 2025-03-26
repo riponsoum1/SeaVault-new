@@ -18,6 +18,10 @@ import { ChevronLeft, Share2, Award, Eye, Heart, Trophy, Download } from 'lucide
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
+import React from 'react';
+
+
+
 
 type UserStats = {
   discovered: number;
@@ -33,7 +37,6 @@ type UserStats = {
     total: number;
   }[];
 };
-
 export default function ShareProfileScreen() {
   const router = useRouter();
   const { user, userProfile } = useAuth();
@@ -184,16 +187,18 @@ export default function ShareProfileScreen() {
     try {
       setSharing(true);
       
+      if (!viewShotRef.current?.capture) return;
+
       const uri = await viewShotRef.current.capture();
       
       if (Platform.OS === 'web') {
         // Web sharing
         const blob = await (await fetch(uri)).blob();
-        const file = new File([blob], 'divedex-profile.png', { type: 'image/png' });
+        const file = new File([blob], 'SeaVault-profile.png', { type: 'image/png' });
         
         if (navigator.share) {
           await navigator.share({
-            title: 'My DiveDex Profile',
+            title: 'My SeaVault Profile',
             text: 'Check out my marine creature collection!',
             files: [file]
           });
@@ -201,15 +206,15 @@ export default function ShareProfileScreen() {
           // Fallback for browsers that don't support Web Share API
           const link = document.createElement('a');
           link.href = uri;
-          link.download = 'divedex-profile.png';
+          link.download = 'SeaVault-profile.png';
           link.click();
         }
       } else {
         // Native sharing
         await Share.share({
           url: uri,
-          title: 'My DiveDex Profile',
-          message: 'Check out my marine creature collection in DiveDex!'
+          title: 'My SeaVault Profile',
+          message: 'Check out my marine creature collection in SeaVault!'
         });
       }
     } catch (error) {
@@ -234,11 +239,11 @@ export default function ShareProfileScreen() {
         }
         setPermissionGranted(true);
       }
-      
+      if (!viewShotRef.current?.capture) return;
       const uri = await viewShotRef.current.capture();
       
       if (Platform.OS === 'android') {
-        const filename = `divedex-profile-${Date.now()}.png`;
+        const filename = `SeaVault-profile-${Date.now()}.png`;
         const fileUri = `${FileSystem.documentDirectory}${filename}`;
         await FileSystem.copyAsync({
           from: uri,
@@ -246,7 +251,7 @@ export default function ShareProfileScreen() {
         });
         
         const asset = await MediaLibrary.createAssetAsync(fileUri);
-        await MediaLibrary.createAlbumAsync('DiveDex', asset, false);
+        await MediaLibrary.createAlbumAsync('SeaVault', asset, false);
       } else {
         await MediaLibrary.saveToLibraryAsync(uri);
       }
@@ -324,7 +329,7 @@ export default function ShareProfileScreen() {
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.logoContainer}>
-                  <Text style={styles.logoText}>DiveDex</Text>
+                  <Text style={styles.logoText}>SeaVault</Text>
                 </View>
                 
                 <View style={styles.profileSection}>
@@ -411,7 +416,7 @@ export default function ShareProfileScreen() {
               )}
               
               <View style={styles.cardFooter}>
-                <Text style={styles.footerText}>divedex.app</Text>
+                <Text style={styles.footerText}>SeaVault.app</Text>
               </View>
             </View>
           </ViewShot>

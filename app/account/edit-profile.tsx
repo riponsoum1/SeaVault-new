@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Image, Platform, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { ChevronLeft, Camera, Upload, User as UserIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import Purchases from 'react-native-purchases';
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -15,13 +16,42 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [plan, setPlan] = useState('Checking...');
 
   useEffect(() => {
     if (userProfile) {
       setFullName(userProfile.full_name || '');
       setAvatarUrl(userProfile.avatar_url);
     }
+    fetchSubscriptionStatus();
   }, [userProfile]);
+
+  const fetchSubscriptionStatus = async () => {
+    try {
+      const info = await Purchases.getCustomerInfo();
+      if (info.entitlements.active['pro']) {
+        const entitlement = info.entitlements.active['pro'];
+        setPlan(entitlement.periodType === 'trial' ? 'Free Trial' : 'Active Subscription');
+      } else {
+        setPlan('Free Account');
+      }
+    } catch (error) {
+      console.error('Failed to fetch subscription info:', error);
+      setPlan('Error fetching plan');
+    }
+  };
+
+  const openManageSubscription = async () => {
+    try {
+      if (Platform.OS === 'ios') {
+        await Linking.openURL('https://apps.apple.com/account/subscriptions');
+      } else {
+        await Linking.openURL('https://play.google.com/store/account/subscriptions');
+      }
+    } catch (error) {
+      console.error('Failed to open subscription settings:', error);
+    }
+  };
 
   const pickImage = async () => {
     try {
@@ -31,9 +61,8 @@ export default function EditProfileScreen() {
         Alert.alert('Permission Required', 'Please allow access to your photo library to add images.');
         return;
       }
-      
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -56,9 +85,8 @@ export default function EditProfileScreen() {
         Alert.alert('Permission Required', 'Please allow access to your camera to take pictures.');
         return;
       }
-      
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -202,6 +230,17 @@ export default function EditProfileScreen() {
         >
           <Text style={styles.passwordButtonText}>Change Password</Text>
         </TouchableOpacity>
+
+        <View style={styles.membershipSection}>
+          <Text style={styles.membershipTitle}>Membership</Text>
+          <Text style={styles.planText}>Current Plan: {plan}</Text>
+          <TouchableOpacity 
+            style={styles.manageSubscriptionButton}
+            onPress={openManageSubscription}
+          >
+            <Text style={styles.manageSubscriptionText}>Manage Subscription</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
       <View style={styles.footer}>
@@ -387,5 +426,34 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  membershipSection: {
+    marginTop: 30,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  membershipTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 10,
+  },
+  planText: {
+    fontSize: 16,
+    color: '#AAAAAA',
+    marginBottom: 15,
+  },
+  manageSubscriptionButton: {
+    backgroundColor: '#2A2A2A',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  manageSubscriptionText: {
+    color: '#0077B6',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

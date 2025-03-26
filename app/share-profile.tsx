@@ -89,11 +89,11 @@ export default function ShareProfileScreen() {
 
   const shareProfile = async () => {
     try {
-      const message = `Check out my DiveDex profile!\n\n🏆 Rank: ${stats.rank}\n🔍 Creatures Discovered: ${stats.discovered}\n⭐ Favorites: ${stats.favorites}\n✨ Total Points: ${stats.points}\n\nDownload DiveDex and start your underwater adventure!`;
+      const message = `Check out my SeaVault profile!\n\n🏆 Rank: ${stats.rank}\n🔍 Creatures Discovered: ${stats.discovered}\n⭐ Favorites: ${stats.favorites}\n✨ Total Points: ${stats.points}\n\nDownload SeaVault and start your underwater adventure!`;
       
       await Share.share({
         message,
-        title: 'My DiveDex Profile'
+        title: 'My SeaVault Profile'
       });
     } catch (error) {
       console.error('Error sharing profile:', error);
@@ -113,7 +113,7 @@ export default function ShareProfileScreen() {
       <View style={styles.content}>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.appName}>DiveDex</Text>
+            <Text style={styles.appName}>SeaVault</Text>
             <View style={styles.avatarContainer}>
               <Text style={styles.avatarText}>
                 {userProfile?.full_name 
@@ -175,7 +175,7 @@ export default function ShareProfileScreen() {
           </View>
           
           <View style={styles.cardFooter}>
-            <Text style={styles.footerText}>Join me on DiveDex!</Text>
+            <Text style={styles.footerText}>Join me on SeaVault!</Text>
           </View>
         </View>
         

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Platform, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { ChevronLeft, Camera, Calendar, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { checkAndUpdateAchievements } from '../../lib/achievements';
 
 export default function AddSightingScreen() {
   const { creatureId, creatureName } = useLocalSearchParams();
@@ -27,7 +28,7 @@ export default function AddSightingScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -52,7 +53,7 @@ export default function AddSightingScreen() {
       }
       
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -113,22 +114,25 @@ export default function AddSightingScreen() {
       });
       
       const { data, error } = await supabase
-        .from('sightings')
-        .insert([
-          {
-            user_id: user.id,
-            creature_id: creatureId,
-            location,
-            date,
-            notes,
-            image_url: imageUrl,
-          }
-        ]);
-        
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
+      .from('sightings')
+      .insert([
+        {
+          user_id: user.id,
+          creature_id: creatureId,
+          location,
+          date,
+          notes,
+          image_url: imageUrl,
+        }
+      ]);
+    
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+    
+    // ✅ NEW: Check & update achievements
+    await checkAndUpdateAchievements(user.id);
       
       console.log('Sighting saved successfully:', data);
       
@@ -224,7 +228,7 @@ export default function AddSightingScreen() {
           
           {imageUri && (
             <View style={styles.selectedImageContainer}>
-              <Text style={styles.selectedImageText}>Image selected</Text>
+              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
               <TouchableOpacity 
                 style={styles.removeImageButton}
                 onPress={() => setImageUri(null)}
@@ -354,18 +358,20 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   selectedImageContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    marginTop: 10,
     backgroundColor: '#2A2A2A',
-    padding: 12,
     borderRadius: 8,
+    overflow: 'hidden',
   },
-  selectedImageText: {
-    color: '#AAAAAA',
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
   },
   removeImageButton: {
-    padding: 5,
+    padding: 12,
+    alignItems: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   removeImageText: {
     color: '#ff6b6b',

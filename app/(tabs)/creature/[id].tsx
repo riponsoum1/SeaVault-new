@@ -243,27 +243,27 @@ export default function CreatureDetailScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       
       {/* Header with favorite button */}
-      <View style={[styles.header, { backgroundColor: getBackgroundColor(creature.category_id) }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ChevronLeft color="white" size={28} />
-        </TouchableOpacity>
-        <View style={styles.placeholder} />
-        <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite}>
-          <Heart color="white" fill={isFavorite ? "white" : "none"} size={28} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Creature image section */}
-      <View style={[styles.imageContainer, { backgroundColor: getBackgroundColor(creature.category_id) }]}>
+      <View style={styles.imageSection}>
         {creature.image_url ? (
           <Image 
             source={{ uri: creature.image_url }} 
             style={styles.creatureImage}
-            resizeMode="contain"
+            resizeMode="cover"
           />
         ) : (
-          <Text style={styles.fallbackEmoji}>{getEmojiForCreature(creature.category_id)}</Text>
+          <View style={[styles.fallbackContainer, { backgroundColor: getBackgroundColor(creature.category_id) }]}>
+            <Text style={styles.fallbackEmoji}>{getEmojiForCreature(creature.category_id)}</Text>
+          </View>
         )}
+        
+        <View style={styles.headerOverlay}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ChevronLeft color="white" size={28} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite}>
+            <Heart color="white" fill={isFavorite ? "white" : "none"} size={28} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Creature name and info */}
@@ -433,7 +433,6 @@ const styles = StyleSheet.create({
     color: '#c62828',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#fff',
   },
   button: {
     backgroundColor: '#0077B6',
@@ -446,32 +445,41 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  header: {
+  imageSection: {
+    height: 350,
+    width: '100%',
+    backgroundColor: '#1E1E1E',
+    position: 'relative',
+  },
+  headerOverlay: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 50,
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    zIndex: 2,
   },
   backButton: {
-    padding: 5,
-  },
-  placeholder: {
-    width: 28,
+    padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 20,
   },
   favoriteButton: {
-    padding: 5,
-  },
-  imageContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 200,
-    paddingBottom: 20,
+    padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 20,
   },
   creatureImage: {
     width: '100%',
-    height: 180,
+    height: '100%',
+  },
+  fallbackContainer: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   fallbackEmoji: {
     fontSize: 120,
@@ -483,6 +491,7 @@ const styles = StyleSheet.create({
     marginTop: -30,
     padding: 20,
     alignItems: 'center',
+    zIndex: 1,
   },
   name: {
     fontSize: 28,

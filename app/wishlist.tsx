@@ -126,7 +126,7 @@ export default function WishlistScreen() {
           <Image 
             source={{ uri: item.image_url }} 
             style={styles.creatureImage}
-            resizeMode="contain"
+            resizeMode="cover"
           />
         ) : (
           <Text style={styles.fallbackEmoji}>🐋</Text>
@@ -305,10 +305,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
   creatureImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   fallbackEmoji: {
     fontSize: 40,

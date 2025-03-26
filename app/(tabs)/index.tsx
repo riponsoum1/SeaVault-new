@@ -208,7 +208,7 @@ export default function HomeScreen() {
     >
       <View style={[styles.creatureHeader, { backgroundColor: getBackgroundColor(item.category_id) }]}>
         {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={styles.creatureImage} resizeMode="contain" />
+          <Image source={{ uri: item.image_url }} style={styles.creatureImage} resizeMode="cover" />
         ) : (
           <Text style={styles.creatureEmoji}>🐋</Text>
         )}
@@ -594,10 +594,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
   creatureImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   creatureEmoji: {
     fontSize: 60,

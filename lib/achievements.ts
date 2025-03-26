@@ -41,54 +41,64 @@ export async function checkAndUpdateAchievements(userId: string) {
     for (const achievement of allAchievements) {
       if (unlockedAchievements.has(achievement.id)) continue;
 
+      let shouldUnlock = false;
+
       // Check beginner achievements
       if (achievement.code === 'first_catch' && sightingsCount >= 1) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'getting_feet_wet' && sightingsCount >= 5) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'underwater_explorer' && sightingsCount >= 10) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
 
       // Check collection achievements
       else if (achievement.code === 'marine_enthusiast' && sightingsCount >= 25) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'ocean_archivist' && sightingsCount >= 50) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'sea_vault_master' && sightingsCount >= 100) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
 
       // Check location achievements
       else if (achievement.code === 'local_diver' && locationsCount >= 1) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'world_traveler' && locationsCount >= 2) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'deep_sea_voyager' && locationsCount >= 3) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
 
       // Check creature-specific achievements
       else if (achievement.code === 'shark_whisperer' && 
         sightings?.some(s => s.creature_id === 'b7c83fd5-3729-4620-92e5-a3a6452300f5')) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'manta_mania' && 
         sightings?.some(s => s.creature_id === 'dbc8a507-15ae-4227-93ef-054847f0e636')) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'dolphin_friend' && 
         sightings?.some(s => s.creature_id === '802ed0c6-3d09-41ba-afa5-f5012a93203d')) {
-        achievementsToUnlock.push(achievement.id);
+        shouldUnlock = true;
       }
       else if (achievement.code === 'whale_watcher' && 
         sightings?.some(s => s.creature_id === '101e1c40-1b91-4968-bd23-e1e2160e6b3d')) {
+        shouldUnlock = true;
+      }
+      // Default case for any other achievement codes
+      else {
+        shouldUnlock = false;
+      }
+
+      if (shouldUnlock) {
         achievementsToUnlock.push(achievement.id);
       }
     }

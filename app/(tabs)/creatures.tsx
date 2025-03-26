@@ -5,6 +5,7 @@ import { Category, Creature } from '../../lib/types';
 import { router } from 'expo-router';
 import { Search, Filter, CircleCheck as CheckCircle, X } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
+import React from 'react';
 
 export default function CreaturesScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -254,7 +255,7 @@ export default function CreaturesScreen() {
           <Image 
             source={{ uri: item.image_url }} 
             style={styles.creatureImage}
-            resizeMode="contain"
+            resizeMode="cover"
           />
         ) : (
           <Text style={styles.fallbackEmoji}>
@@ -282,7 +283,7 @@ export default function CreaturesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>DiveDex</Text>
+        <Text style={styles.header}>SeaVault</Text>
         <TouchableOpacity 
           style={styles.filterButton}
           onPress={toggleSearch}
@@ -542,6 +543,7 @@ const styles = StyleSheet.create({
   creatureImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   fallbackEmoji: {
     fontSize: 40,
