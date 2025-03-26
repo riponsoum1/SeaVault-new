@@ -5,6 +5,8 @@ import { LogOut, CreditCard, Settings, User as UserIcon, Award, Heart, BookOpen,
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
+import React from 'react';
+import Purchases from 'react-native-purchases';
 
 export default function ProfileScreen() {
   const { user, userProfile, signOut, loading } = useAuth();

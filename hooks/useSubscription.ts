@@ -9,10 +9,10 @@ export const useSubscription = () => {
     const checkSubscription = async () => {
       try {
         const customerInfo = await Purchases.getCustomerInfo();
-        const entitlement = customerInfo.entitlements.active['pro'];
+        const entitlement = customerInfo.entitlements.active["pro"]; // 👈 must match your RevenueCat dashboard
         setHasPro(!!entitlement);
       } catch (err) {
-        console.warn('Error checking subscription', err);
+        console.warn("Error checking subscription", err);
         setHasPro(false);
       } finally {
         setLoading(false);
