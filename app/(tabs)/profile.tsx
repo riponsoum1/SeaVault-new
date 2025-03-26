@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, RefreshControl } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { router } from 'expo-router';
-import { LogOut, User as UserIcon, Award, Heart, BookOpen, Share2 } from 'lucide-react-native';
+import { LogOut, User as UserIcon, Award, Heart, BookOpen, Share2, Settings } from 'lucide-react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
@@ -111,14 +111,6 @@ export default function ProfileScreen() {
         <View style={styles.membershipBadge}>
           <Text style={styles.membershipText}>{membershipStatus}</Text>
         </View>
-
-        <TouchableOpacity
-          style={styles.shareProfileButton}
-          onPress={() => router.push('/share-profile')}
-        >
-          <Share2 size={16} color="white" />
-          <Text style={styles.shareProfileText}>Share Profile</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.statsContainer}>
@@ -145,9 +137,9 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
 
-        <TouchableOpacity onPress={() => router.push('/account/edit-profile')} style={styles.menuItem}>
-          <UserIcon size={20} color="#0077B6" />
-          <Text style={styles.menuItemText}>Edit Profile</Text>
+        <TouchableOpacity style={styles.editProfileButton} onPress={() => router.push('/account/edit-profile')}>
+          <Settings size={20} color="white" />
+          <Text style={styles.editProfileText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
 
@@ -170,9 +162,9 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity onPress={signOut} style={styles.signOutButton}>
-        <LogOut size={20} color="#fff" />
-        <Text style={styles.signOutText}>Sign Out</Text>
+      <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
+        <LogOut size={20} color="#FF6B6B" />
+        <Text style={styles.logoutText}>Log Out</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -245,20 +237,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  shareProfileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2A2A2A',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginTop: 15,
-  },
-  shareProfileText: {
-    color: 'white',
-    marginLeft: 5,
-    fontWeight: '500',
-  },
   statsContainer: {
     flexDirection: 'row',
     backgroundColor: '#1E1E1E',
@@ -325,23 +303,33 @@ const styles = StyleSheet.create({
     marginLeft: 15,
     color: '#DDDDDD',
   },
-  signOutButton: {
+  editProfileButton: {
     flexDirection: 'row',
     backgroundColor: '#0077B6',
-    marginHorizontal: 15,
-    marginBottom: 30,
-    padding: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderRadius: 10,
-    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    justifyContent: 'center',
+    marginBottom: 10,
   },
-  signOutText: {
+  editProfileText: {
     color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 10,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    backgroundColor: '#2A2A2A',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutText: {
+    color: '#FF6B6B',
     fontWeight: 'bold',
     fontSize: 16,
     marginLeft: 10,

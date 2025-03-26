@@ -233,9 +233,21 @@ export default function CreaturesScreen() {
         style={styles.categoryCard}
         onPress={() => selectCategory(item.id)}
       >
-        <Text style={styles.categoryEmoji}>{getEmojiForCategory(item.name)}</Text>
-        <Text style={styles.categoryTitle}>{item.name}</Text>
-        <Text style={styles.categoryProgress}>{sightedCount}/{creatureCount}</Text>
+        {item.image_url ? (
+          <Image 
+            source={{ uri: item.image_url }} 
+            style={styles.categoryImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={styles.categoryEmoji}>{getEmojiForCategory(item.name)}</Text>
+        )}
+        <View style={styles.categoryOverlay}>
+          <Text style={styles.categoryTitle}>{item.name}</Text>
+          <View style={styles.progressContainer}>
+            <Text style={styles.categoryProgress}>{sightedCount}/{creatureCount}</Text>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -468,31 +480,50 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E1E1E',
     margin: 8,
     borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     minHeight: 160,
+    overflow: 'hidden',
+    position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
   },
+  categoryImage: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
   categoryEmoji: {
     fontSize: 40,
-    marginBottom: 10,
+    alignSelf: 'center',
+    marginTop: 30,
+  },
+  categoryOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   categoryTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: 'white',
-    textAlign: 'center',
-    marginBottom: 5,
+    marginBottom: 4,
+  },
+  progressContainer: {
+    backgroundColor: 'rgba(139, 92, 246, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
   },
   categoryProgress: {
-    fontSize: 14,
-    color: '#8B5CF6', // Purple color for progress
-    fontWeight: '500',
+    fontSize: 12,
+    color: '#8B5CF6',
+    fontWeight: '600',
   },
   categoryHeader: {
     flexDirection: 'row',

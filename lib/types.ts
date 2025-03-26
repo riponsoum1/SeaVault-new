@@ -2,6 +2,7 @@ export type Category = {
   id: string;
   name: string;
   created_at: string;
+  image_url: string | null;
 };
 
 export type Creature = {

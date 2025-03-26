@@ -68,11 +68,14 @@ function InnerLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="auth" />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+      <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+      <Stack.Screen name="creature/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="account/edit-profile" options={{ headerShown: false }} />
+      <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="wishlist" />
       <Stack.Screen name="sightings" />
-      <Stack.Screen name="share-profile" />
       <Stack.Screen name="achievements" />
       <Stack.Screen name="+not-found" />
     </Stack>

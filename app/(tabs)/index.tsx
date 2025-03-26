@@ -292,8 +292,8 @@ export default function HomeScreen() {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Sea Creatures</Text>
-        <Text style={styles.subtitle}>Discover amazing marine life</Text>
+        <Text style={styles.title}>SeaVault</Text>
+        <Text style={styles.subtitle}>Discover them all</Text>
       </View>
 
       <View style={styles.statsSection}>
