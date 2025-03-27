@@ -1,152 +1,108 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Platform, Image } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
+import { Picker } from '@react-native-picker/picker';
 import { supabase } from '../../lib/supabase';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import { ChevronLeft, Camera, Calendar, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
+import { ChevronLeft, Camera, Calendar, MapPin } from 'lucide-react-native';
 
 export default function AddSightingScreen() {
   const { creatureId, creatureName } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
-  
-  const [location, setLocation] = useState('');
+
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pickImage = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library to add images.');
-        return;
-      }
+  const [diveSites, setDiveSites] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDiveSiteId, setSelectedDiveSiteId] = useState<string | null>(null);
+  const [mapRegion, setMapRegion] = useState<any>(null);
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
+  const [diveType, setDiveType] = useState('');
+  const [timeOfDay, setTimeOfDay] = useState('');
+  const [depth, setDepth] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+
+      const location = await Location.getCurrentPositionAsync({});
+      setMapRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 20,
+        longitudeDelta: 20,
       });
-      
-      if (!result.canceled) {
-        setImageUri(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
-    }
+    })();
+
+    supabase.from('dive_sites').select('*').then(({ data }) => {
+      if (data) setDiveSites(data);
+    });
+  }, []);
+
+  const filteredDiveSites = diveSites.filter(site =>
+    site.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    if (!result.canceled) setImageUri(result.assets[0].uri);
   };
 
   const takePicture = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') return;
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    if (!result.canceled) setImageUri(result.assets[0].uri);
+  };
+
+  const saveSighting = async () => {
+    if (!user) return Alert.alert('Login required');
+    if (!selectedDiveSiteId) return setError('Please select a dive site');
+    if (!date) return setError('Please enter a date');
+
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your camera to take pictures.');
-        return;
-      }
-      
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-      
-      if (!result.canceled) {
-        setImageUri(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error taking picture:', error);
-      Alert.alert('Error', 'Failed to take picture. Please try again.');
+      setLoading(true);
+      let imageUrl = imageUri ? await uploadImage(imageUri) : null;
+
+      const { error } = await supabase.from('sightings').insert([{
+        user_id: user.id,
+        creature_id: creatureId,
+        dive_site_id: selectedDiveSiteId,
+        dive_type: diveType || null,
+        time_of_day: timeOfDay || null,
+        depth: depth ? Number(depth) : null,
+        date,
+        notes,
+        image_url: imageUrl,
+      }]);
+
+      if (error) throw error;
+
+      await checkAndUpdateAchievements(user.id);
+      Alert.alert('Success', 'Sighting saved!');
+      router.back();
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || 'Failed to save sighting');
+    } finally {
+      setLoading(false);
     }
   };
 
   const uploadImage = async (uri: string) => {
-    try {
-      // For demo purposes, we'll just return the URI
-      // In a real app, you would upload to Supabase storage
-      return uri;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      throw new Error('Failed to upload image');
-    }
-  };
-
-  const saveSighting = async () => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to add a sighting.');
-      return;
-    }
-    
-    if (!location.trim()) {
-      setError('Please enter a location');
-      return;
-    }
-    
-    if (!date) {
-      setError('Please select a date');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      setError(null);
-      
-      let imageUrl = null;
-      if (imageUri) {
-        imageUrl = await uploadImage(imageUri);
-      }
-      
-      console.log('Saving sighting with data:', {
-        user_id: user.id,
-        creature_id: creatureId,
-        location,
-        date,
-        notes,
-        image_url: imageUrl,
-      });
-      
-      const { data, error } = await supabase
-      .from('sightings')
-      .insert([
-        {
-          user_id: user.id,
-          creature_id: creatureId,
-          location,
-          date,
-          notes,
-          image_url: imageUrl,
-        }
-      ]);
-    
-    if (error) {
-      console.error('Supabase error:', error);
-      throw error;
-    }
-    
-    // ✅ NEW: Check & update achievements
-    await checkAndUpdateAchievements(user.id);
-      
-      console.log('Sighting saved successfully:', data);
-      
-      Alert.alert(
-        'Success',
-        'Sighting added successfully!',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
-    } catch (error: any) {
-      console.error('Error saving sighting:', error);
-      setError(error.message || 'Failed to save sighting');
-    } finally {
-      setLoading(false);
-    }
+    return uri; // placeholder
   };
 
   return (
@@ -158,240 +114,113 @@ export default function AddSightingScreen() {
         <Text style={styles.headerTitle}>Add Sighting</Text>
         <View style={styles.placeholder} />
       </View>
-      
+
       <ScrollView style={styles.content}>
         <Text style={styles.creatureName}>{creatureName}</Text>
-        
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
+
+        {error && <Text style={styles.error}>{error}</Text>}
+
+        {/* Search Bar */}
+        <TextInput
+          placeholder="Search dive site..."
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          style={styles.input}
+        />
+
+        {/* Map */}
+        {mapRegion && (
+          <MapView style={{ height: 300, marginVertical: 10 }} initialRegion={mapRegion} provider={PROVIDER_GOOGLE}>
+            {filteredDiveSites.map(site => (
+              <Marker
+                key={site.id}
+                coordinate={{ latitude: parseFloat(site.latitude), longitude: parseFloat(site.longitude) }}
+                title={site.name}
+                onPress={() => setSelectedDiveSiteId(site.id)}
+                pinColor={selectedDiveSiteId === site.id ? 'blue' : 'red'}
+              />
+            ))}
+          </MapView>
         )}
-        
-        <View style={styles.formGroup}>
-          <View style={styles.labelContainer}>
-            <MapPin size={18} color="#0077B6" />
-            <Text style={styles.label}>Location</Text>
-          </View>
-          <TextInput
-            style={styles.input}
-            placeholder="Where did you see it?"
-            placeholderTextColor="#777777"
-            value={location}
-            onChangeText={setLocation}
-          />
+
+        {/* Dive Type */}
+        <Text style={styles.label}>Dive Type</Text>
+        <Picker selectedValue={diveType} onValueChange={setDiveType} style={styles.picker}>
+          <Picker.Item label="Select dive type..." value="" />
+          <Picker.Item label="Shore dive" value="shore" />
+          <Picker.Item label="Boat dive" value="boat" />
+          <Picker.Item label="Wreck dive" value="wreck" />
+        </Picker>
+
+        {/* Time of Day */}
+        <Text style={styles.label}>Time of Day</Text>
+        <Picker selectedValue={timeOfDay} onValueChange={setTimeOfDay} style={styles.picker}>
+          <Picker.Item label="Select time..." value="" />
+          <Picker.Item label="Morning" value="morning" />
+          <Picker.Item label="Afternoon" value="afternoon" />
+          <Picker.Item label="Night" value="night" />
+        </Picker>
+
+        {/* Depth */}
+        <Text style={styles.label}>Depth (optional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Depth in meters"
+          keyboardType="numeric"
+          value={depth}
+          onChangeText={setDepth}
+        />
+
+        {/* Date */}
+        <Text style={styles.label}>Date</Text>
+        <TextInput style={styles.input} value={date} onChangeText={setDate} />
+
+        {/* Notes */}
+        <Text style={styles.label}>Notes</Text>
+        <TextInput
+          style={[styles.input, { minHeight: 80 }]}
+          multiline
+          placeholder="Extra details..."
+          value={notes}
+          onChangeText={setNotes}
+        />
+
+        {/* Photo */}
+        <Text style={styles.label}>Photo</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity style={styles.imageButton} onPress={takePicture}>
+            <Text style={styles.imageButtonText}>Take Photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+            <Text style={styles.imageButtonText}>Choose</Text>
+          </TouchableOpacity>
         </View>
-        
-        <View style={styles.formGroup}>
-          <View style={styles.labelContainer}>
-            <Calendar size={18} color="#0077B6" />
-            <Text style={styles.label}>Date</Text>
-          </View>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#777777"
-            value={date}
-            onChangeText={setDate}
-          />
-        </View>
-        
-        <View style={styles.formGroup}>
-          <View style={styles.labelContainer}>
-            <Text style={styles.label}>Notes</Text>
-          </View>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Add any details about your sighting..."
-            placeholderTextColor="#777777"
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
-        
-        <View style={styles.imageSection}>
-          <Text style={styles.imageTitle}>Add Photo</Text>
-          
-          <View style={styles.imageButtons}>
-            <TouchableOpacity style={styles.imageButton} onPress={takePicture}>
-              <Camera size={24} color="white" />
-              <Text style={styles.imageButtonText}>Take Photo</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-              <Text style={styles.imageButtonText}>Choose from Library</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {imageUri && (
-            <View style={styles.selectedImageContainer}>
-              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-              <TouchableOpacity 
-                style={styles.removeImageButton}
-                onPress={() => setImageUri(null)}
-              >
-                <Text style={styles.removeImageText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {imageUri && (
+          <Image source={{ uri: imageUri }} style={{ marginTop: 10, height: 200, borderRadius: 10 }} />
+        )}
       </ScrollView>
-      
-      <View style={styles.footer}>
-        <TouchableOpacity 
-          style={styles.saveButton}
-          onPress={saveSighting}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="white" size="small" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Sighting</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+
+      <TouchableOpacity style={styles.saveButton} onPress={saveSighting} disabled={loading}>
+        {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveButtonText}>Save Sighting</Text>}
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-    backgroundColor: '#1E1E1E',
-  },
-  backButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  placeholder: {
-    width: 34, // Same width as back button for centering
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  creatureName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 20,
-  },
-  errorContainer: {
-    backgroundColor: 'rgba(198, 40, 40, 0.2)',
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#c62828',
-  },
-  errorText: {
-    color: '#ff6b6b',
-    fontSize: 14,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  labelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: 'white',
-    marginLeft: 5,
-  },
-  input: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: 'white',
-  },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  imageSection: {
-    marginBottom: 20,
-  },
-  imageTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: 'white',
-    marginBottom: 10,
-  },
-  imageButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  imageButton: {
-    backgroundColor: '#0077B6',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 0.48,
-    flexDirection: 'row',
-  },
-  imageButtonText: {
-    color: 'white',
-    fontWeight: '500',
-    marginLeft: 5,
-  },
-  selectedImageContainer: {
-    marginTop: 10,
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  imagePreview: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
-  },
-  removeImageButton: {
-    padding: 12,
-    alignItems: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  removeImageText: {
-    color: '#ff6b6b',
-    fontWeight: '500',
-  },
-  footer: {
-    padding: 20,
-    backgroundColor: '#1E1E1E',
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-  },
-  saveButton: {
-    backgroundColor: '#0077B6',
-    borderRadius: 8,
-    padding: 15,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  container: { flex: 1, backgroundColor: '#121212' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  backButton: { padding: 5 },
+  headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+  placeholder: { width: 30 },
+  content: { padding: 20 },
+  creatureName: { fontSize: 24, color: 'white', fontWeight: 'bold', marginBottom: 10 },
+  error: { color: 'red', marginBottom: 10 },
+  label: { color: 'white', fontSize: 16, marginTop: 15, marginBottom: 5 },
+  input: { backgroundColor: '#2A2A2A', color: 'white', borderRadius: 8, padding: 10 },
+  picker: { backgroundColor: '#2A2A2A', color: 'white', borderRadius: 8 },
+  imageButton: { backgroundColor: '#0077B6', padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' },
+  imageButtonText: { color: 'white', fontWeight: '500' },
+  saveButton: { backgroundColor: '#0077B6', padding: 15, alignItems: 'center', margin: 20, borderRadius: 8 },
+  saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 });
