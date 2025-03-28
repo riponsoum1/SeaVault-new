@@ -73,7 +73,7 @@ export default function LeaderboardScreen() {
       sightings?.forEach(sighting => {
         const userStat = userStats.get(sighting.user_id);
         if (userStat && !userStat.discovered.has(sighting.creature_id)) {
-          userStat.points += (sighting.creatures?.points || 0);
+          userStat.points += (sighting.creatures?.[0]?.points || 0);
           userStat.discovered.add(sighting.creature_id);
         }
       });

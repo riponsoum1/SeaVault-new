@@ -403,6 +403,17 @@ export default function HomeScreen() {
           <Text style={styles.viewAllButtonText}>View All Creatures</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Log a Dive Button */}
+      <View style={styles.logDiveButtonContainer}>
+        <TouchableOpacity 
+          style={styles.logDiveButton} 
+          onPress={() => router.push('/LogDiveScreen')}
+        >
+          <Plus size={24} color="white" />
+          <Text style={styles.logDiveButtonText}>Log a Dive</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -664,5 +675,25 @@ const styles = StyleSheet.create({
   inlineLoadingContainer: {
     padding: 20,
     alignItems: 'center',
+  },
+  logDiveButtonContainer: {
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  logDiveButton: {
+    flexDirection: 'row',
+    backgroundColor: '#0077B6',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  logDiveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    marginLeft: 10,
+    fontWeight: 'bold',
   },
 });
