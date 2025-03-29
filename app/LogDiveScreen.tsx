@@ -1,23 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, Platform, KeyboardAvoidingView } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, Platform, KeyboardAvoidingView, Modal } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Plus } from 'lucide-react-native';
+import CustomMap from './components/CustomMap';
+import { Picker } from '@react-native-picker/picker';
+import { useDiveLog } from '../context/DiveLogContext';
+
+const DIVE_TYPES = ['Shore', 'Boat', 'Wreck', 'Drift', 'Cave', 'Night', 'Deep'];
 
 export default function LogDiveScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { selectedCreatures, setSelectedCreatures } = useDiveLog();
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [timeOfDay, setTimeOfDay] = useState(new Date());
+  const [timeOfDay, setTimeOfDay] = useState('');
   const [diveType, setDiveType] = useState('');
   const [depth, setDepth] = useState('');
   const [notes, setNotes] = useState('');
-  const [selectedCreatures, setSelectedCreatures] = useState<any[]>([]); // Add creatures context here
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +29,7 @@ export default function LogDiveScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDiveSiteId, setSelectedDiveSiteId] = useState<string | null>(null);
   const [mapRegion, setMapRegion] = useState<any>(null);
+  const [showDiveTypePicker, setShowDiveTypePicker] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -35,8 +40,8 @@ export default function LogDiveScreen() {
       setMapRegion({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        latitudeDelta: 10,
-        longitudeDelta: 10,
+        latitudeDelta: 0.1,  // Adjust to zoom into a smaller area
+        longitudeDelta: 0.1,
       });
     })();
 
@@ -69,7 +74,10 @@ export default function LogDiveScreen() {
 
     try {
       setLoading(true);
-      const formattedTime = timeOfDay.toTimeString().split(':').slice(0, 2).join(':');
+      const formattedTime = timeOfDay && timeOfDay.length === 5 
+       ? `${timeOfDay}:00`  // If timeOfDay is in HH:MM format, append :00
+       : timeOfDay || '12:00:00';  // Default to '12:00:00' if timeOfDay is empty or invalid
+
       let imageUrl = imageUri ? await uploadImage(imageUri) : null;
 
       const { error } = await supabase.from('sightings').insert([{
@@ -88,7 +96,7 @@ export default function LogDiveScreen() {
 
       Alert.alert('Success', 'Dive logged successfully!');
       router.back();
-      setSelectedCreatures([]);
+      setSelectedCreatures(selectedCreatures.filter(c => c.id !== selectedCreatures[0].id));
     } catch (e: any) {
       console.error(e);
       setError(e.message || 'Failed to log dive');
@@ -100,6 +108,7 @@ export default function LogDiveScreen() {
   const uploadImage = async (uri: string) => {
     return uri; // Placeholder for future uploads
   };
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.header, { marginTop: Platform.OS === 'ios' ? 60 : 30 }]}>
@@ -116,26 +125,64 @@ export default function LogDiveScreen() {
         <TextInput placeholder="Search dive site..." value={searchTerm} onChangeText={setSearchTerm} style={styles.input} />
 
         {mapRegion && (
-          <MapView style={{ height: 300, marginVertical: 10 }} initialRegion={mapRegion}>
-            {filteredDiveSites.filter(site => site.latitude && site.longitude).map(site => (
-              <Marker
-                key={site.id}
-                coordinate={{ latitude: Number(site.latitude), longitude: Number(site.longitude) }}
-                title={site.name}
-                onPress={() => setSelectedDiveSiteId(site.id)}
-                pinColor={selectedDiveSiteId === site.id ? 'blue' : 'red'}
-              />
-            ))}
-          </MapView>
+          <CustomMap
+            diveSites={filteredDiveSites}
+            selectedDiveSiteId={selectedDiveSiteId}
+            onDiveSiteSelect={setSelectedDiveSiteId}
+            initialRegion={mapRegion}
+          />
         )}
 
         <Text style={styles.label}>Dive Type</Text>
-        <TextInput style={styles.input} placeholder="Dive type" value={diveType} onChangeText={setDiveType} />
+        <TouchableOpacity 
+          style={styles.pickerContainer}
+          onPress={() => setShowDiveTypePicker(true)}
+        >
+          <Text style={styles.pickerText}>
+            {diveType || 'Select dive type'}
+          </Text>
+          <View style={styles.pickerArrow}>
+            <ChevronLeft size={20} color="white" style={{ transform: [{ rotate: '90deg' }] }} />
+          </View>
+        </TouchableOpacity>
+
+        <Modal
+          visible={showDiveTypePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowDiveTypePicker(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Dive Type</Text>
+                <TouchableOpacity onPress={() => setShowDiveTypePicker(false)}>
+                  <Text style={styles.modalClose}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <Picker
+                selectedValue={diveType}
+                onValueChange={(itemValue) => setDiveType(itemValue)}
+                style={styles.modalPicker}
+                itemStyle={styles.modalPickerItem}
+              >
+                <Picker.Item label="Select dive type" value="" />
+                {DIVE_TYPES.map((type) => (
+                  <Picker.Item key={type} label={type} value={type} />
+                ))}
+              </Picker>
+            </View>
+          </View>
+        </Modal>
 
         <Text style={styles.label}>Time of Day</Text>
-        <TouchableOpacity style={styles.input} onPress={() => {/* Add time picker logic */}}>
-          <Text>{timeOfDay.toTimeString().split(':').slice(0, 2).join(':')}</Text>
-        </TouchableOpacity>
+        <TextInput 
+          style={styles.input} 
+          placeholder="12:00"
+          value={timeOfDay}
+          onChangeText={setTimeOfDay}
+          placeholderTextColor="#666"
+        />
 
         <Text style={styles.label}>Depth (optional)</Text>
         <TextInput style={styles.input} placeholder="Depth in meters" keyboardType="numeric" value={depth} onChangeText={setDepth} />
@@ -147,15 +194,39 @@ export default function LogDiveScreen() {
         <TextInput style={[styles.input, { minHeight: 80 }]} multiline placeholder="Extra details..." value={notes} onChangeText={setNotes} />
 
         <Text style={styles.label}>Creatures</Text>
-        {selectedCreatures.map(creature => (
-          <View key={creature.id} style={styles.creatureCard}>
-            <Image source={{ uri: creature.imageUri }} style={styles.cardImage} />
-            <Text style={styles.cardName}>{creature.name}</Text>
-            <TouchableOpacity onPress={() => {/* Add image upload logic */}}>
-              <Text style={styles.uploadButton}>Upload Image</Text>
-            </TouchableOpacity>
+        {selectedCreatures.length > 0 && (
+          <View style={styles.selectedCreaturesContainer}>
+            {selectedCreatures.map(creature => (
+              <View key={creature.id} style={styles.creatureCard}>
+                <View style={styles.creatureLeftSection}>
+                  <Image 
+                    source={{ uri: creature.imageUri || 'https://via.placeholder.com/50' }} 
+                    style={styles.creatureImage} 
+                  />
+                  <Text style={styles.creatureName}>{creature.name}</Text>
+                </View>
+                <View style={styles.rightSection}>
+                  <TouchableOpacity onPress={pickImage}>
+                    <Plus size={24} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.closeButton}
+                    onPress={() => setSelectedCreatures(selectedCreatures.filter(c => c.id !== creature.id))}
+                  >
+                    <Text style={styles.closeButtonText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
-        ))}
+        )}
+
+        <TouchableOpacity 
+          style={styles.addCreatureButton}
+          onPress={() => router.push('/Select-Creatures')}
+        >
+          <Text style={styles.addCreatureText}>+ Add Creatures</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.saveButton} onPress={saveDive} disabled={loading}>
           {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveButtonText}>Save Dive</Text>}
@@ -208,24 +279,56 @@ const styles = StyleSheet.create({
       fontSize: 16,
       marginTop: 15,
     },
-    // Add the missing styles here (creatureCard, cardImage, cardName, etc.)
     creatureCard: {
-      backgroundColor: '#1E1E1E',
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 12,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: '#2A2A2A',
+      padding: 15,
+      borderRadius: 12,
+      marginBottom: 8,
     },
-    cardImage: {
-      width: 50,
-      height: 50,
-      borderRadius: 10,
+    creatureLeftSection: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    creatureImage: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       marginRight: 12,
+      backgroundColor: '#1E1E1E', // Add a background color for loading state
     },
-    cardName: {
+    creatureName: {
       color: 'white',
-      fontWeight: 'bold',
+      fontSize: 16,
+    },
+    rightSection: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    emptyImageCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#1E1E1E',
+      marginRight: 8,
+    },
+    closeButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: '#3A3A3A',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    closeButtonText: {
+      color: '#666',
+      fontSize: 20,
+      lineHeight: 24,
+      textAlign: 'center',
     },
     uploadButton: {
       color: '#0077B6',
@@ -247,5 +350,67 @@ const styles = StyleSheet.create({
       fontWeight: 'bold',
       fontSize: 16,
     },
-    // More styles as needed
+    pickerContainer: {
+      backgroundColor: '#2A2A2A',
+      borderRadius: 8,
+      marginBottom: 15,
+      padding: 15,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    pickerText: {
+      color: 'white',
+      fontSize: 16,
+    },
+    pickerArrow: {
+      marginLeft: 10,
+    },
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalContent: {
+      backgroundColor: '#1E1E1E',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 20,
+    },
+    modalTitle: {
+      color: 'white',
+      fontSize: 18,
+      fontWeight: 'bold',
+    },
+    modalClose: {
+      color: '#0077B6',
+      fontSize: 16,
+    },
+    modalPicker: {
+      backgroundColor: '#2A2A2A',
+      borderRadius: 8,
+      color: 'white',
+    },
+    modalPickerItem: {
+      color: 'white',
+    },
+    addCreatureButton: {
+      backgroundColor: 'transparent',
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 15,
+    },
+    addCreatureText: {
+      color: '#0077B6',
+      fontSize: 16,
+    },
+    selectedCreaturesContainer: {
+      marginBottom: 15,
+    },
   });

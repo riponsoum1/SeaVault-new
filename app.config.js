@@ -57,15 +57,7 @@ export default {
       "expo-router",
       "expo-secure-store",
       "expo-image-picker",
-      "expo-media-library",
-      [
-        "react-native-maps",
-        {
-          config: {
-            googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
-          }
-        }
-      ]
+      "expo-media-library"
     ],
     experiments: {
       typedRoutes: true,

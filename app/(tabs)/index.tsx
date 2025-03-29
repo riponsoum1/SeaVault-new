@@ -292,8 +292,19 @@ export default function HomeScreen() {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.title}>SeaVault</Text>
-        <Text style={styles.subtitle}>Discover them all</Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.title}>SeaVault</Text>
+            <Text style={styles.subtitle}>Discover them all</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.logDiveButton} 
+            onPress={() => router.push('/LogDiveScreen')}
+          >
+            <Plus size={20} color="white" />
+            <Text style={styles.logDiveButtonText}>Log a Dive</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.statsSection}>
@@ -403,17 +414,6 @@ export default function HomeScreen() {
           <Text style={styles.viewAllButtonText}>View All Creatures</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Log a Dive Button */}
-      <View style={styles.logDiveButtonContainer}>
-        <TouchableOpacity 
-          style={styles.logDiveButton} 
-          onPress={() => router.push('/LogDiveScreen')}
-        >
-          <Plus size={24} color="white" />
-          <Text style={styles.logDiveButtonText}>Log a Dive</Text>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
   );
 }
@@ -433,6 +433,11 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
     backgroundColor: '#1E1E1E',
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   title: {
     fontSize: 28,
@@ -676,24 +681,18 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
-  logDiveButtonContainer: {
-    padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
   logDiveButton: {
     flexDirection: 'row',
     backgroundColor: '#0077B6',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     alignItems: 'center',
   },
   logDiveButtonText: {
     color: 'white',
-    fontSize: 16,
-    marginLeft: 10,
+    fontSize: 14,
+    marginLeft: 8,
     fontWeight: 'bold',
   },
 });

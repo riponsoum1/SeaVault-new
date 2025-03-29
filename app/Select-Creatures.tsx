@@ -56,10 +56,10 @@ export default function SelectCreaturesScreen() {
         c.scientific_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   const confirmAndGoBack = () => {
-    // Convert selected creatures to include required imageUri property
     const creaturesWithImageUri = selectedCreatures.map(creature => ({
-      ...creature,
-      imageUri: null // Use null instead of undefined to match Creature type
+      id: creature.id,
+      name: creature.name,
+      imageUri: creature.image_url // Map the image_url to imageUri
     }));
     setContextCreatures(creaturesWithImageUri);
     router.back();

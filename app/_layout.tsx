@@ -7,6 +7,7 @@ import RevenueCatUI from 'react-native-purchases-ui';
 
 import { supabase } from '@/lib/supabase';
 import { useAuth, AuthProvider } from '@/context/AuthContext';
+import { DiveLogProvider } from '../context/DiveLogContext';
 
 function InnerLayout() {
   const { user, loading: authLoading } = useAuth();
@@ -72,6 +73,7 @@ function InnerLayout() {
       <Stack.Screen name="auth/login" options={{ headerShown: false }} />
       <Stack.Screen name="auth/register" options={{ headerShown: false }} />
       <Stack.Screen name="creature/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="Select-Creatures" options={{ headerShown: false }} />
       <Stack.Screen name="account/edit-profile" options={{ headerShown: false }} />
       <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="wishlist" />
@@ -98,7 +100,9 @@ export default function AppLayout() {
 
   return (
     <AuthProvider>
-      <InnerLayout />
+      <DiveLogProvider>
+        <InnerLayout />
+      </DiveLogProvider>
     </AuthProvider>
   );
 }

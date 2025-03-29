@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, Platform } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { supabase } from '../../lib/supabase';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Picker } from '@react-native-picker/picker';
-import { supabase } from '../../lib/supabase';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import * as ImagePicker from 'expo-image-picker';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
 import { ChevronLeft, Camera, Calendar, MapPin } from 'lucide-react-native';
+import CustomMap from '../components/CustomMap';
 
 export default function AddSightingScreen() {
   const { creatureId, creatureName } = useLocalSearchParams();
@@ -130,17 +130,12 @@ export default function AddSightingScreen() {
 
         {/* Map */}
         {mapRegion && (
-          <MapView style={{ height: 300, marginVertical: 10 }} initialRegion={mapRegion} provider={PROVIDER_GOOGLE}>
-            {filteredDiveSites.map(site => (
-              <Marker
-                key={site.id}
-                coordinate={{ latitude: parseFloat(site.latitude), longitude: parseFloat(site.longitude) }}
-                title={site.name}
-                onPress={() => setSelectedDiveSiteId(site.id)}
-                pinColor={selectedDiveSiteId === site.id ? 'blue' : 'red'}
-              />
-            ))}
-          </MapView>
+          <CustomMap
+            diveSites={filteredDiveSites}
+            selectedDiveSiteId={selectedDiveSiteId}
+            onDiveSiteSelect={setSelectedDiveSiteId}
+            initialRegion={mapRegion}
+          />
         )}
 
         {/* Dive Type */}
