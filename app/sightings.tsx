@@ -1,19 +1,33 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image, Modal, Pressable } from 'react-native';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Creature, Sighting } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
-import { ChevronLeft, Camera, Calendar, MapPin } from 'lucide-react-native';
+import { ChevronLeft, Camera, Calendar, MapPin, Anchor, X } from 'lucide-react-native';
 
-type SightingWithCreature = Sighting & {
+type DiveSite = {
+  name: string;
+};
+
+// Extend the Sighting type with the additional fields
+interface ExtendedSighting extends Sighting {
+  time_of_day?: string;
+  depth?: number;
+  dive_type?: string;
+  creature_notes?: string;
+}
+
+type SightingWithCreature = ExtendedSighting & {
   creature: Creature;
+  dive_sites: DiveSite;
 };
 
 export default function SightingsScreen() {
   const [sightings, setSightings] = useState<SightingWithCreature[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -31,10 +45,16 @@ export default function SightingsScreen() {
       setLoading(true);
       setError(null);
       
-      // Get all sightings for the user
+      // Get all sightings for the user with dive site information
       const { data: sightingsData, error: sightingsError } = await supabase
         .from('sightings')
-        .select('*')
+        .select(`
+          *,
+          dive_sites!inner (
+            name
+          ),
+          creature:creature_id (*)
+        `)
         .eq('user_id', user.id)
         .order('date', { ascending: false });
         
@@ -90,6 +110,12 @@ export default function SightingsScreen() {
     });
   };
 
+  const formatTime = (timeString: string) => {
+    if (!timeString) return '';
+    // Remove seconds from time string (e.g., "12:00:00" -> "12:00")
+    return timeString.split(':').slice(0, 2).join(':');
+  };
+
   // Get background color based on category
   const getBackgroundColor = (categoryId: string) => {
     switch (categoryId) {
@@ -126,7 +152,7 @@ export default function SightingsScreen() {
             <Image 
               source={{ uri: item.creature.image_url }} 
               style={styles.creatureImage}
-              resizeMode="contain"
+              resizeMode="cover"
             />
           ) : (
             <Text style={styles.emoji}>🐋</Text>
@@ -139,31 +165,50 @@ export default function SightingsScreen() {
       </TouchableOpacity>
       
       <View style={styles.sightingDetails}>
-        {item.image_url ? (
-          <Image 
-            source={{ uri: item.image_url }} 
-            style={styles.sightingImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.sightingImagePlaceholder}>
-            <Camera size={30} color="#AAAAAA" />
-          </View>
+        {item.image_url && (
+          <TouchableOpacity onPress={() => setSelectedImage(item.image_url)}>
+            <Image 
+              source={{ uri: item.image_url }} 
+              style={styles.sightingImage}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
         )}
         
         <View style={styles.sightingInfo}>
-          <View style={styles.sightingMetaItem}>
-            <Calendar size={14} color="#0077B6" style={styles.sightingIcon} />
-            <Text style={styles.sightingDate}>{formatDate(item.date)}</Text>
+          <View style={styles.sightingMetaContainer}>
+            <View style={styles.metadataGrid}>
+              <View style={styles.metadataItem}>
+                <Calendar size={16} color="#0077B6" style={styles.metadataIcon} />
+                <Text style={styles.metadataText}>
+                  {formatDate(item.date)}
+                  {item.time_of_day && `\n${formatTime(item.time_of_day)}`}
+                </Text>
+              </View>
+              <View style={styles.metadataItem}>
+                <Anchor size={16} color="#0077B6" style={styles.metadataIcon} />
+                <Text style={styles.metadataText}>{item.dive_sites.name}</Text>
+              </View>
+              {item.depth && (
+                <View style={styles.metadataItem}>
+                  <Text style={styles.metadataLabel}>Depth</Text>
+                  <Text style={styles.metadataValue}>{item.depth}m</Text>
+                </View>
+              )}
+              {item.dive_type && (
+                <View style={styles.metadataItem}>
+                  <Text style={styles.metadataLabel}>Type</Text>
+                  <Text style={styles.metadataValue}>{item.dive_type}</Text>
+                </View>
+              )}
+              {item.creature_notes && (
+                <View style={[styles.metadataItem, styles.notesItem]}>
+                  <Text style={styles.metadataLabel}>Notes</Text>
+                  <Text style={styles.metadataValue}>{item.creature_notes}</Text>
+                </View>
+              )}
+            </View>
           </View>
-          <View style={styles.sightingMetaItem}>
-            <MapPin size={14} color="#0077B6" style={styles.sightingIcon} />
-            <Text style={styles.sightingLocation} numberOfLines={1}>{item.location}</Text>
-          </View>
-          
-          {item.notes && (
-            <Text style={styles.sightingNotes} numberOfLines={2}>{item.notes}</Text>
-          )}
         </View>
       </View>
     </View>
@@ -179,6 +224,36 @@ export default function SightingsScreen() {
 
   return (
     <View style={styles.container}>
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <X color="white" size={24} />
+            </TouchableOpacity>
+          </View>
+          <Pressable 
+            style={styles.modalContent}
+            onPress={() => setSelectedImage(null)}
+          >
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.fullSizeImage}
+                resizeMode="contain"
+              />
+            )}
+          </Pressable>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ChevronLeft color="white" size={24} />
@@ -339,40 +414,80 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 150,
     borderRadius: 8,
-    marginBottom: 10,
+    marginBottom: 15,
   },
   sightingImagePlaceholder: {
     width: '100%',
-    height: 100,
+    height: 150,
     backgroundColor: '#2A2A2A',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 15,
   },
   sightingInfo: {
-    marginTop: 5,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+    padding: 12,
   },
-  sightingMetaItem: {
+  sightingMetaContainer: {
+    marginBottom: 10,
+  },
+  metadataGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 5,
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 12,
   },
-  sightingIcon: {
-    marginRight: 5,
+  metadataItem: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#1E1E1E',
+    padding: 12,
+    borderRadius: 8,
   },
-  sightingDate: {
+  metadataIcon: {
+    marginBottom: 4,
+  },
+  metadataText: {
     fontSize: 14,
-    color: '#DDDDDD',
+    color: '#FFFFFF',
+    lineHeight: 20,
   },
-  sightingLocation: {
+  metadataLabel: {
+    fontSize: 12,
+    color: '#0077B6',
+    marginBottom: 2,
+    fontWeight: '600',
+  },
+  metadataValue: {
     fontSize: 14,
-    color: '#DDDDDD',
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  notesItem: {
+    minWidth: '100%',
+  },
+  notesContainer: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+  },
+  notesText: {
+    color: '#AAAAAA',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  notesLabel: {
+    fontSize: 14,
+    color: '#0077B6',
+    marginBottom: 4,
+    fontWeight: '600',
   },
   sightingNotes: {
     fontSize: 14,
-    color: '#BBBBBB',
-    marginTop: 5,
+    color: '#DDDDDD',
     lineHeight: 20,
   },
   retryButton: {
@@ -380,5 +495,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
+  },
+  sightingMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  sightingMetaHalf: {
+    flex: 1,
+    marginRight: 8,
+  },
+  sightingMetaLabel: {
+    fontSize: 14,
+    color: '#0077B6',
+    fontWeight: '600',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+  },
+  modalHeader: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1,
+  },
+  closeButton: {
+    padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+  },
+  modalContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullSizeImage: {
+    width: '100%',
+    height: '100%',
   },
 });
