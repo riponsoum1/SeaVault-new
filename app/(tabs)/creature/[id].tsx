@@ -7,7 +7,7 @@ import { ChevronLeft, Heart, Plus, Camera, MapPin, Calendar, CreditCard as Edit 
 import { useAuth } from '../../../context/AuthContext';
 
 export default function CreatureDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, category } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
   const [creature, setCreature] = useState<Creature | null>(null);
@@ -196,6 +196,28 @@ export default function CreatureDetailScreen() {
     }
   };
 
+  // Get color based on creature class
+  const getClassColor = (creatureClass?: string) => {
+    if (!creatureClass) return '#0077B6';
+    
+    switch (creatureClass.toLowerCase()) {
+      case 'common':
+        return '#4CAF50'; // Green
+      case 'uncommon':
+        return '#2196F3'; // Blue
+      case 'rare':
+        return '#9C27B0'; // Purple
+      case 'epic':
+        return '#FF9800'; // Orange
+      case 'legendary':
+        return '#F44336'; // Red
+      case 'mythical':
+        return '#E91E63'; // Pink
+      default:
+        return '#0077B6';
+    }
+  };
+
   const navigateToAddSighting = () => {
     if (!user) {
       Alert.alert('Sign In Required', 'Please sign in to add a sighting.');
@@ -240,9 +262,43 @@ export default function CreatureDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTransparent: true,
+          headerStyle: {
+            backgroundColor: 'transparent',
+          },
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => {
+                if (category) {
+                  router.replace({
+                    pathname: '/(tabs)/creatures',
+                    params: { category }
+                  });
+                } else {
+                  router.back();
+                }
+              }}
+              style={[styles.backButton, { marginLeft: 10 }]}
+            >
+              <ChevronLeft size={24} color="white" />
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <TouchableOpacity 
+              style={[styles.favoriteButton, { marginRight: 10 }]} 
+              onPress={toggleFavorite}
+            >
+              <Heart color="white" fill={isFavorite ? "white" : "none"} size={24} />
+            </TouchableOpacity>
+          ),
+          headerTitle: '',
+        }}
+      />
       
-      {/* Header with favorite button */}
+      {/* Header with image */}
       <View style={styles.imageSection}>
         {creature.image_url ? (
           <Image 
@@ -255,15 +311,6 @@ export default function CreatureDetailScreen() {
             <Text style={styles.fallbackEmoji}>{getEmojiForCreature(creature.category_id)}</Text>
           </View>
         )}
-        
-        <View style={styles.headerOverlay}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <ChevronLeft color="white" size={28} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite}>
-            <Heart color="white" fill={isFavorite ? "white" : "none"} size={28} />
-          </TouchableOpacity>
-        </View>
       </View>
 
       {/* Creature name and info */}
@@ -272,8 +319,8 @@ export default function CreatureDetailScreen() {
         <Text style={styles.scientificName}>{creature.scientific_name}</Text>
         
         <View style={styles.tagContainer}>
-          <View style={styles.tag}>
-            <Text style={styles.tagText}>Marine</Text>
+          <View style={[styles.tag, { backgroundColor: getClassColor(creature.class) }]}>
+            <Text style={styles.tagText}>{creature.class}</Text>
           </View>
           <View style={styles.pointsTag}>
             <Text style={styles.pointsTagText}>{creature.points} pts</Text>
@@ -463,12 +510,12 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 20,
   },
   favoriteButton: {
     padding: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 20,
   },
   creatureImage: {
@@ -516,10 +563,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 10,
     borderWidth: 1,
-    borderColor: '#0077B6',
+    borderColor: 'white',
   },
   tagText: {
-    color: '#0077B6',
+    color: 'white',
     fontWeight: '600',
   },
   pointsTag: {
@@ -527,6 +574,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'white',
   },
   pointsTagText: {
     color: 'white',

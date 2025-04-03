@@ -1,14 +1,16 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "@tsconfig/react-native/tsconfig.json",
   "compilerOptions": {
     "strict": true,
+    "types": ["jest"],
     "paths": {
       "@/*": ["./*"]
     },
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "allowJs": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "jsx": "react-native"  // Added this line to enable JSX
   },
   "include": [
     "**/*.ts",

@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, R
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Category, Creature } from '../../lib/types';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Search, Filter, CircleCheck as CheckCircle, X } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import React from 'react';
@@ -19,10 +19,15 @@ export default function CreaturesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Creature[]>([]);
   const { user } = useAuth();
+  const { category } = useLocalSearchParams();
 
   useEffect(() => {
+    if (category) {
+      setSelectedCategory(category as string);
+      setShowCategories(false);
+    }
     initialLoad();
-  }, [user]);
+  }, [user, category]);
 
   const initialLoad = async () => {
     try {
@@ -166,12 +171,40 @@ export default function CreaturesScreen() {
     }
   };
 
+  // Get color based on creature class
+  const getClassColor = (creatureClass?: string) => {
+    if (!creatureClass) return '#0077B6';
+    
+    switch (creatureClass.toLowerCase()) {
+      case 'common':
+        return '#4CAF50'; // Green
+      case 'uncommon':
+        return '#2196F3'; // Blue
+      case 'rare':
+        return '#9C27B0'; // Purple
+      case 'epic':
+        return '#FF9800'; // Orange
+      case 'legendary':
+        return '#F44336'; // Red
+      case 'mythical':
+        return '#E91E63'; // Pink
+      default:
+        return '#0077B6';
+    }
+  };
+
   const filteredCreatures = selectedCategory
     ? creatures.filter(creature => creature.category_id === selectedCategory)
     : creatures;
 
   const navigateToCreatureDetail = (creatureId: string) => {
-    router.push(`/creature/${creatureId}`);
+    router.push({
+      pathname: '/(tabs)/creature/[id]',
+      params: { 
+        id: creatureId,
+        category: selectedCategory
+      }
+    });
   };
 
   const selectCategory = (categoryId: string) => {
@@ -254,7 +287,13 @@ export default function CreaturesScreen() {
 
   const renderCreatureItem = ({ item }: { item: Creature }) => (
     <TouchableOpacity 
-      style={styles.creatureItem}
+      style={[
+        styles.creatureItem,
+        { 
+          borderColor: getClassColor(item.class),
+          borderWidth: 2,
+        }
+      ]}
       onPress={() => navigateToCreatureDetail(item.id)}
     >
       <View 
@@ -570,6 +609,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+    borderTopLeftRadius: 15,
+    borderBottomLeftRadius: 15,
+    marginLeft: -1,
   },
   creatureImage: {
     width: '100%',

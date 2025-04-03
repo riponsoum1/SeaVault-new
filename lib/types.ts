@@ -22,6 +22,7 @@ export type Creature = {
   lifespan: string;
   image_url: string | null;
   created_at: string;
+  class: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythical';
 };
 
 export type Sighting = {

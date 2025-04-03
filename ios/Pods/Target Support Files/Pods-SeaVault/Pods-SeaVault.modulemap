@@ -1,6 +1,0 @@
-module Pods_SeaVault {
-  umbrella header "Pods-SeaVault-umbrella.h"
-
-  export *
-  module * { export * }
-}

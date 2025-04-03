@@ -66,7 +66,7 @@ export default function SightingsScreen() {
       }
       
       // Get all creature IDs from the sightings
-      const creatureIds = [...new Set(sightingsData.map(s => s.creature_id))];
+      const creatureIds = Array.from(new Set(sightingsData.map(s => s.creature_id)));
       
       // Fetch creature details for those IDs
       const { data: creaturesData, error: creaturesError } = await supabase

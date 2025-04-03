@@ -18,9 +18,10 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "co.uk.seavault.app",
-      buildNumber: "1",
+      buildNumber: "2",
       config: {
-        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+        usesNonExemptEncryption: false
       },
       infoPlist: {
         NSCameraUsageDescription:
@@ -57,7 +58,13 @@ export default {
       "expo-router",
       "expo-secure-store",
       "expo-image-picker",
-      "expo-media-library"
+      "expo-media-library",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SeaVault needs your location to record where you spotted marine life."
+        }
+      ]
     ],
     experiments: {
       typedRoutes: true,

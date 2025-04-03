@@ -405,6 +405,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     marginTop: 15,
+    marginBottom: 8,
   },
   creatureCard: {
     backgroundColor: '#1E1E1E',

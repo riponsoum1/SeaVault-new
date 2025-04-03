@@ -8,18 +8,21 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { supabase } from '@/lib/supabase';
 import { useAuth, AuthProvider } from '@/context/AuthContext';
 import { DiveLogProvider } from '../context/DiveLogContext';
+import { OnboardingProvider, useOnboarding } from '../context/OnboardingContext';
 
 function InnerLayout() {
   const { user, loading: authLoading } = useAuth();
+  const { hasSeenOnboarding } = useOnboarding();
   const [checkingSub, setCheckingSub] = useState(true);
   const router = useRouter();
   const segments = useSegments();
 
   const isAuthRoute = segments[0] === 'auth';
+  const isOnboardingRoute = segments[0] === 'onboarding';
 
   useEffect(() => {
     const checkAccess = async () => {
-      if (!user || isAuthRoute) {
+      if (!user || isAuthRoute || isOnboardingRoute) {
         setCheckingSub(false);
         return;
       }
@@ -57,7 +60,13 @@ function InnerLayout() {
     if (!authLoading) {
       checkAccess();
     }
-  }, [user, authLoading, isAuthRoute]);
+  }, [user, authLoading, isAuthRoute, isOnboardingRoute]);
+
+  useEffect(() => {
+    if (!authLoading && !user && !hasSeenOnboarding) {
+      router.replace('/onboarding');
+    }
+  }, [authLoading, user, hasSeenOnboarding]);
 
   if (authLoading || checkingSub) {
     return (
@@ -69,6 +78,7 @@ function InnerLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="auth/login" options={{ headerShown: false }} />
       <Stack.Screen name="auth/register" options={{ headerShown: false }} />
@@ -100,9 +110,11 @@ export default function AppLayout() {
 
   return (
     <AuthProvider>
-      <DiveLogProvider>
-        <InnerLayout />
-      </DiveLogProvider>
+      <OnboardingProvider>
+        <DiveLogProvider>
+          <InnerLayout />
+        </DiveLogProvider>
+      </OnboardingProvider>
     </AuthProvider>
   );
 }

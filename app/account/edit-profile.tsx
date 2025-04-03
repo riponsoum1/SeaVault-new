@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Image, Platform, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '../../lib/supabase';
+import { supabase, uploadAvatar, deleteOldAvatar } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { ChevronLeft, Camera, Upload, User as UserIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -62,7 +62,7 @@ export default function EditProfileScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -86,7 +86,7 @@ export default function EditProfileScreen() {
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -101,17 +101,6 @@ export default function EditProfileScreen() {
     }
   };
 
-  const uploadAvatar = async (uri: string) => {
-    try {
-      // For demo purposes, we'll just return the URI
-      // In a real app, you would upload to Supabase storage
-      return uri;
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      throw new Error('Failed to upload avatar');
-    }
-  };
-
   const updateProfile = async () => {
     if (!user) {
       Alert.alert('Error', 'You must be logged in to update your profile.');
@@ -123,16 +112,56 @@ export default function EditProfileScreen() {
       setError(null);
       setSuccess(false);
       
-      let finalAvatarUrl = userProfile?.avatar_url || null;
+      let finalAvatarUrl = userProfile?.avatar_url;
       
+      // Only handle avatar upload if a new image was selected
       if (avatarUrl && avatarUrl !== userProfile?.avatar_url) {
-        finalAvatarUrl = await uploadAvatar(avatarUrl);
+        try {
+          // Delete old avatar if it exists
+          if (userProfile?.avatar_url) {
+            const oldFilePath = userProfile.avatar_url.split('/').pop();
+            if (oldFilePath) {
+              await deleteOldAvatar(oldFilePath);
+            }
+          }
+          
+          // Upload new avatar
+          console.log('Starting avatar upload process...');
+          finalAvatarUrl = await uploadAvatar(avatarUrl, user.id);
+          console.log('Avatar upload completed, URL:', finalAvatarUrl);
+        } catch (uploadError) {
+          console.error('Avatar upload error:', uploadError);
+          Alert.alert('Error', 'Failed to upload profile picture. Please try again.');
+          return;
+        }
       }
+
+      console.log('Updating profile with avatar URL:', finalAvatarUrl);
       
-      await updateUserProfile({
-        full_name: fullName,
-        avatar_url: finalAvatarUrl,
-      });
+      // Update profile in database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: fullName,
+          avatar_url: finalAvatarUrl,
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        throw updateError;
+      }
+
+      console.log('Profile updated in database successfully');
+
+      // Update local state
+      if (updateUserProfile) {
+        await updateUserProfile({
+          full_name: fullName,
+          avatar_url: finalAvatarUrl,
+        });
+        console.log('Local profile state updated');
+      }
       
       setSuccess(true);
       setTimeout(() => {
