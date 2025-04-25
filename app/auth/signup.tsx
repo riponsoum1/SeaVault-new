@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'expo-router';
 
@@ -15,17 +25,17 @@ export default function SignupScreen() {
       setValidationError('All fields are required');
       return false;
     }
-    
+
     if (password !== confirmPassword) {
       setValidationError('Passwords do not match');
       return false;
     }
-    
+
     if (password.length < 6) {
       setValidationError('Password must be at least 6 characters');
       return false;
     }
-    
+
     setValidationError(null);
     return true;
   };
@@ -34,7 +44,7 @@ export default function SignupScreen() {
     if (!validateForm()) {
       return;
     }
-    
+
     await signUp(email, password);
   };
 
@@ -43,11 +53,16 @@ export default function SignupScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardAvoid}
     >
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.container}
+      >
         <View style={styles.header}>
           <Text style={styles.emoji}>🐠</Text>
           <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Join us to explore the ocean's wonders</Text>
+          <Text style={styles.subtitle}>
+            Join us to explore the ocean's wonders
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -135,6 +150,10 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
+    backgroundColor: '#121212',
+  },
+  scrollView: {
+    backgroundColor: '#121212',
   },
   container: {
     flexGrow: 1,

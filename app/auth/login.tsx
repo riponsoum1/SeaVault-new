@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'expo-router';
 
@@ -20,11 +30,16 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardAvoid}
     >
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.container}
+      >
         <View style={styles.header}>
           <Text style={styles.emoji}>🌊</Text>
           <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue exploring the ocean</Text>
+          <Text style={styles.subtitle}>
+            Sign in to continue exploring the ocean
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -94,6 +109,10 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
+    backgroundColor: '#121212',
+  },
+  scrollView: {
+    backgroundColor: '#121212',
   },
   container: {
     flexGrow: 1,

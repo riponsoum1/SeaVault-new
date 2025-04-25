@@ -22,10 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
 import Purchases from 'react-native-purchases';
 import React from 'react'; // 👈 fixes UMD global error
-import {
-  ProfileSkeleton,
-  StatsSkeleton,
-} from '../../components/SkeletonLoading';
+import { StatsSkeleton } from '../../components/SkeletonLoading';
 
 export default function ProfileScreen() {
   const { user, userProfile, signOut, loading } = useAuth();
@@ -108,10 +105,6 @@ export default function ProfileScreen() {
     await fetchMembershipStatus();
     setRefreshing(false);
   }, []);
-
-  if (loading) {
-    return <ProfileSkeleton />;
-  }
 
   if (!user) {
     router.replace('/auth/login');
