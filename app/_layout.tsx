@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Platform } from 'react-native';
-import { Stack, useRouter, useSegments, Slot } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  ActivityIndicator,
+  Platform,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+} from 'react-native';
+import { useRouter, useSegments, Slot } from 'expo-router';
 import Constants from 'expo-constants';
 import Purchases from 'react-native-purchases';
 import RevenueCatUI from 'react-native-purchases-ui';
@@ -8,20 +15,23 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { supabase } from '@/lib/supabase';
 import { useAuth, AuthProvider } from '@/context/AuthContext';
 import { DiveLogProvider } from '../context/DiveLogContext';
-import {
-  OnboardingProvider,
-  useOnboarding,
-} from '../context/OnboardingContext';
+import { useOnboardingStore } from '../stores/onboardingStore';
+
+// Set this to false before production
+const IS_DEVELOPMENT = true;
 
 function InnerLayout() {
   const { user, loading: authLoading } = useAuth();
-  const { hasSeenOnboarding } = useOnboarding();
+  const hasSeenOnboarding = useOnboardingStore(
+    (state) => state.hasSeenOnboarding
+  );
   const [checkingSub, setCheckingSub] = useState(true);
   const router = useRouter();
   const segments = useSegments();
 
   const isAuthRoute = segments[0] === 'auth';
   const isOnboardingRoute = segments[0] === 'onboarding';
+  const isDevRoute = segments[0] === 'dev';
 
   useEffect(() => {
     if (authLoading || isAuthRoute || isOnboardingRoute) return;
@@ -65,25 +75,31 @@ function InnerLayout() {
   }, [user, authLoading, isAuthRoute, isOnboardingRoute, router]);
 
   useEffect(() => {
-    if (
-      !authLoading &&
-      !user &&
-      !hasSeenOnboarding &&
-      !isOnboardingRoute &&
-      !isAuthRoute
-    ) {
-      // Delay navigation until after initial render
-      const timer = setTimeout(() => {
+    if (authLoading || isDevRoute) return;
+
+    // Delay navigation until after initial render
+    const timer = setTimeout(() => {
+      // First-time user flow: Show onboarding first
+      if (!hasSeenOnboarding && !isOnboardingRoute) {
         router.replace('/onboarding');
-      }, 0);
-      return () => clearTimeout(timer);
-    }
+        return;
+      }
+
+      // User has seen onboarding but not logged in: go to signup/login
+      if (hasSeenOnboarding && !user && !isAuthRoute) {
+        router.replace('/auth/signup');
+        return;
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [
     authLoading,
     user,
     hasSeenOnboarding,
     isOnboardingRoute,
     isAuthRoute,
+    isDevRoute,
     router,
   ]);
 
@@ -95,7 +111,19 @@ function InnerLayout() {
     );
   }
 
-  return <Slot />;
+  return (
+    <>
+      <Slot />
+      {IS_DEVELOPMENT && (
+        <TouchableOpacity
+          style={styles.devButton}
+          onPress={() => router.push('/dev')}
+        >
+          <Text style={styles.devButtonText}>DEV</Text>
+        </TouchableOpacity>
+      )}
+    </>
+  );
 }
 
 export default function AppLayout() {
@@ -114,11 +142,32 @@ export default function AppLayout() {
 
   return (
     <AuthProvider>
-      <OnboardingProvider>
-        <DiveLogProvider>
-          <InnerLayout />
-        </DiveLogProvider>
-      </OnboardingProvider>
+      <DiveLogProvider>
+        <InnerLayout />
+      </DiveLogProvider>
     </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  devButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+    backgroundColor: 'rgba(255, 0, 0, 0.7)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  devButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+});

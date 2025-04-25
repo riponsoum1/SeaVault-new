@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       await Purchases.logOut();
-      router.replace('/auth/login');
+      // Navigation will be handled by the layout
     } catch (error: any) {
       setError(error.message || 'An unexpected error occurred');
     } finally {

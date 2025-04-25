@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { ChevronRight, ChevronLeft } from 'lucide-react-native';
-import { useOnboarding } from '../context/OnboardingContext';
+import { useOnboardingStore } from '../stores/onboardingStore';
 
 const { width } = Dimensions.get('window');
 
@@ -39,13 +39,15 @@ const slides = [
 
 export default function OnboardingScreen() {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const { setHasSeenOnboarding } = useOnboarding();
+  const setHasSeenOnboarding = useOnboardingStore(
+    (state) => state.setHasSeenOnboarding
+  );
 
-  const handleNext = async () => {
+  const handleNext = () => {
     if (currentSlide < slides.length - 1) {
       setCurrentSlide(currentSlide + 1);
     } else {
-      await setHasSeenOnboarding(true);
+      setHasSeenOnboarding(true);
       router.push('/auth/signup');
     }
   };
