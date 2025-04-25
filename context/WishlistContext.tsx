@@ -73,14 +73,12 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { error } = await supabase
-        .from('wishlists')
-        .insert([
-          {
-            user_id: user.id,
-            creature_id: creatureId,
-          },
-        ]);
+      const { error } = await supabase.from('wishlists').insert([
+        {
+          user_id: user.id,
+          creature_id: creatureId,
+        },
+      ]);
 
       if (error) {
         throw error;
@@ -117,7 +115,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Update local state
-      setWishlistItems(wishlistItems.filter(id => id !== creatureId));
+      setWishlistItems(wishlistItems.filter((id) => id !== creatureId));
     } catch (error: any) {
       console.error('Error removing from wishlist:', error);
       setError(error.message || 'Failed to remove from wishlist');

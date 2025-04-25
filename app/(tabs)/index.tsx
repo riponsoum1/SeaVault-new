@@ -1,10 +1,30 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, ActivityIndicator, Image, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Image,
+  RefreshControl,
+} from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Creature } from '../../lib/types';
 import { useAuth } from '../../context/AuthContext';
 import { router } from 'expo-router';
-import { Search, CircleCheck as CheckCircle, Heart, Plus, Eye, X, Trophy, Medal } from 'lucide-react-native';
+import {
+  Search,
+  CircleCheck as CheckCircle,
+  Heart,
+  Plus,
+  Eye,
+  X,
+  Trophy,
+  Medal,
+} from 'lucide-react-native';
+import SyncStatus from '../../components/SyncStatus';
 
 type LeaderboardUser = {
   id: string;
@@ -38,7 +58,7 @@ export default function HomeScreen() {
         fetchCreatures(),
         user && fetchSightedCreatures(),
         user && fetchWishlistCreatures(),
-        user && fetchLeaderboard()
+        user && fetchLeaderboard(),
       ]);
     } catch (error) {
       console.error('Error in initial load:', error);
@@ -51,7 +71,7 @@ export default function HomeScreen() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const { data, error } = await supabase
         .from('creatures')
         .select('*')
@@ -69,7 +89,7 @@ export default function HomeScreen() {
 
   const fetchSightedCreatures = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('sightings')
@@ -77,7 +97,9 @@ export default function HomeScreen() {
         .eq('user_id', user.id);
 
       if (error) throw error;
-      const sightedIds = [...new Set(data.map(sighting => sighting.creature_id))];
+      const sightedIds = [
+        ...new Set(data.map((sighting) => sighting.creature_id)),
+      ];
       setSightedCreatures(sightedIds);
     } catch (error) {
       console.error('Error fetching sighted creatures:', error);
@@ -86,7 +108,7 @@ export default function HomeScreen() {
 
   const fetchWishlistCreatures = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('wishlists')
@@ -94,7 +116,7 @@ export default function HomeScreen() {
         .eq('user_id', user.id);
 
       if (error) throw error;
-      const wishlistIds = data.map(item => item.creature_id);
+      const wishlistIds = data.map((item) => item.creature_id);
       setWishlistCreatures(wishlistIds);
     } catch (error) {
       console.error('Error fetching wishlist creatures:', error);
@@ -111,9 +133,8 @@ export default function HomeScreen() {
 
       if (profilesError) throw profilesError;
 
-      const { data: sightingsWithPoints, error: sightingsError } = await supabase
-        .from('sightings')
-        .select(`
+      const { data: sightingsWithPoints, error: sightingsError } =
+        await supabase.from('sightings').select(`
           user_id,
           creature_id,
           creatures (
@@ -123,34 +144,40 @@ export default function HomeScreen() {
 
       if (sightingsError) throw sightingsError;
 
-      const userStats = sightingsWithPoints.reduce((acc: { [key: string]: { points: number, discovered: Set<string> } }, sighting: any) => {
-        const userId = sighting.user_id;
-        if (!acc[userId]) {
-          acc[userId] = { points: 0, discovered: new Set() };
-        }
-        
-        if (!acc[userId].discovered.has(sighting.creature_id)) {
-          acc[userId].points += sighting.creatures.points;
-          acc[userId].discovered.add(sighting.creature_id);
-        }
-        
-        return acc;
-      }, {});
+      const userStats = sightingsWithPoints.reduce(
+        (
+          acc: { [key: string]: { points: number; discovered: Set<string> } },
+          sighting: any
+        ) => {
+          const userId = sighting.user_id;
+          if (!acc[userId]) {
+            acc[userId] = { points: 0, discovered: new Set() };
+          }
 
-      const leaderboardData = profiles.map(profile => ({
+          if (!acc[userId].discovered.has(sighting.creature_id)) {
+            acc[userId].points += sighting.creatures.points;
+            acc[userId].discovered.add(sighting.creature_id);
+          }
+
+          return acc;
+        },
+        {}
+      );
+
+      const leaderboardData = profiles.map((profile) => ({
         id: profile.id,
         full_name: profile.full_name,
         avatar_url: profile.avatar_url,
         points: userStats[profile.id]?.points || 0,
         discovered: userStats[profile.id]?.discovered?.size || 0,
-        rank: 0
+        rank: 0,
       }));
 
       const sortedLeaderboard = leaderboardData
         .sort((a, b) => b.points - a.points || b.discovered - a.discovered)
         .map((user, index) => ({
           ...user,
-          rank: index + 1
+          rank: index + 1,
         }));
 
       setLeaderboard(sortedLeaderboard);
@@ -168,7 +195,7 @@ export default function HomeScreen() {
         fetchCreatures(),
         user && fetchSightedCreatures(),
         user && fetchWishlistCreatures(),
-        user && fetchLeaderboard()
+        user && fetchLeaderboard(),
       ]);
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -177,27 +204,40 @@ export default function HomeScreen() {
     }
   }, [user]);
 
-  const hasBeenSighted = (creatureId: string) => sightedCreatures.includes(creatureId);
-  const isInWishlist = (creatureId: string) => wishlistCreatures.includes(creatureId);
+  const hasBeenSighted = (creatureId: string) =>
+    sightedCreatures.includes(creatureId);
+  const isInWishlist = (creatureId: string) =>
+    wishlistCreatures.includes(creatureId);
 
   const getBackgroundColor = (categoryId: string) => {
     switch (categoryId) {
-      case 'b7c83fd5-3729-4620-92e5-a3a6452300f5': return '#0077B6';
-      case '48169dbe-0f42-4059-a6fb-842184ae60e2': return '#0096C7';
-      case '50d44a97-ec72-4c4f-9f66-e41c1621ded5': return '#00B4D8';
-      case '8d2f3964-9332-4032-9bc1-815e3f72836b': return '#48CAE4';
-      case '4fe5e0c2-d60d-49d2-9854-ed7bde02ec63': return '#90E0EF';
-      case 'bdc2d112-78b2-47d6-9181-8e5ba48d7d7c': return '#ADE8F4';
-      default: return '#0077B6';
+      case 'b7c83fd5-3729-4620-92e5-a3a6452300f5':
+        return '#0077B6';
+      case '48169dbe-0f42-4059-a6fb-842184ae60e2':
+        return '#0096C7';
+      case '50d44a97-ec72-4c4f-9f66-e41c1621ded5':
+        return '#00B4D8';
+      case '8d2f3964-9332-4032-9bc1-815e3f72836b':
+        return '#48CAE4';
+      case '4fe5e0c2-d60d-49d2-9854-ed7bde02ec63':
+        return '#90E0EF';
+      case 'bdc2d112-78b2-47d6-9181-8e5ba48d7d7c':
+        return '#ADE8F4';
+      default:
+        return '#0077B6';
     }
   };
 
   const getRankColor = (rank: number): string => {
     switch (rank) {
-      case 1: return '#FFD700';
-      case 2: return '#C0C0C0';
-      case 3: return '#CD7F32';
-      default: return '#0077B6';
+      case 1:
+        return '#FFD700';
+      case 2:
+        return '#C0C0C0';
+      case 3:
+        return '#CD7F32';
+      default:
+        return '#0077B6';
     }
   };
 
@@ -206,9 +246,18 @@ export default function HomeScreen() {
       style={styles.creatureCard}
       onPress={() => router.push(`/creature/${item.id}`)}
     >
-      <View style={[styles.creatureHeader, { backgroundColor: getBackgroundColor(item.category_id) }]}>
+      <View
+        style={[
+          styles.creatureHeader,
+          { backgroundColor: getBackgroundColor(item.category_id) },
+        ]}
+      >
         {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={styles.creatureImage} resizeMode="cover" />
+          <Image
+            source={{ uri: item.image_url }}
+            style={styles.creatureImage}
+            resizeMode="cover"
+          />
         ) : (
           <Text style={styles.creatureEmoji}>🐋</Text>
         )}
@@ -225,8 +274,12 @@ export default function HomeScreen() {
       </View>
       <View style={styles.creatureInfo}>
         <View style={styles.nameContainer}>
-          <Text style={styles.creatureName} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.scientificName} numberOfLines={1}>{item.scientific_name}</Text>
+          <Text style={styles.creatureName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.scientificName} numberOfLines={1}>
+            {item.scientific_name}
+          </Text>
         </View>
         <View style={styles.pointsBadge}>
           <Text style={styles.pointsText}>{item.points}</Text>
@@ -236,7 +289,12 @@ export default function HomeScreen() {
   );
 
   const renderLeaderboardItem = ({ item }: { item: LeaderboardUser }) => (
-    <View style={[styles.leaderboardItem, item.id === user?.id && styles.currentUserItem]}>
+    <View
+      style={[
+        styles.leaderboardItem,
+        item.id === user?.id && styles.currentUserItem,
+      ]}
+    >
       <View style={styles.rankContainer}>
         {item.rank <= 3 ? (
           <Medal size={24} color={getRankColor(item.rank)} />
@@ -260,10 +318,17 @@ export default function HomeScreen() {
           {item.full_name || 'Anonymous Explorer'}
           {item.id === user?.id && <Text style={styles.youTag}> (You)</Text>}
         </Text>
-        <Text style={styles.userStats}>{item.discovered} creatures discovered</Text>
+        <Text style={styles.userStats}>
+          {item.discovered} creatures discovered
+        </Text>
       </View>
 
-      <View style={[styles.pointsContainer, { backgroundColor: getRankColor(item.rank) }]}>
+      <View
+        style={[
+          styles.pointsContainer,
+          { backgroundColor: getRankColor(item.rank) },
+        ]}
+      >
         <Text style={styles.points}>{item.points}</Text>
         <Text style={styles.pointsLabel}>PTS</Text>
       </View>
@@ -279,7 +344,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       refreshControl={
         <RefreshControl
@@ -297,8 +362,8 @@ export default function HomeScreen() {
             <Text style={styles.title}>SeaVault</Text>
             <Text style={styles.subtitle}>Discover them all</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.logDiveButton} 
+          <TouchableOpacity
+            style={styles.logDiveButton}
             onPress={() => router.push('/LogDiveScreen')}
           >
             <Plus size={20} color="white" />
@@ -307,8 +372,10 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      <SyncStatus />
+
       <View style={styles.statsSection}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.statCard}
           onPress={() => router.push('/sightings')}
           activeOpacity={0.7}
@@ -318,7 +385,7 @@ export default function HomeScreen() {
           <Text style={styles.statLabel}>Discovered</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.statCard}
           onPress={() => router.push('/wishlist')}
           activeOpacity={0.7}
@@ -328,14 +395,14 @@ export default function HomeScreen() {
           <Text style={styles.statLabel}>Wishlist</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.statCard}
           onPress={() => router.push('/profile')}
           activeOpacity={0.7}
         >
           <Trophy size={24} color="#FFD700" />
           <Text style={styles.statValue}>
-            {leaderboard.find(u => u.id === user?.id)?.points || 0}
+            {leaderboard.find((u) => u.id === user?.id)?.points || 0}
           </Text>
           <Text style={styles.statLabel}>Points</Text>
         </TouchableOpacity>
@@ -358,10 +425,8 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.leaderboardList}>
-            {leaderboard.slice(0, 3).map(user => (
-              <View key={user.id}>
-                {renderLeaderboardItem({ item: user })}
-              </View>
+            {leaderboard.slice(0, 3).map((user) => (
+              <View key={user.id}>{renderLeaderboardItem({ item: user })}</View>
             ))}
           </View>
         )}
@@ -378,15 +443,15 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.recentDiscoveries}
         >
           {creatures
-            .filter(creature => hasBeenSighted(creature.id))
+            .filter((creature) => hasBeenSighted(creature.id))
             .slice(0, 5)
-            .map(creature => (
+            .map((creature) => (
               <View key={creature.id} style={styles.recentDiscoveryCard}>
                 {renderCreatureItem({ item: creature })}
               </View>
@@ -398,16 +463,16 @@ export default function HomeScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Featured Creatures</Text>
         </View>
-        
+
         <View style={styles.featuredGrid}>
-          {creatures.slice(0, 4).map(creature => (
+          {creatures.slice(0, 4).map((creature) => (
             <View key={creature.id} style={styles.gridItem}>
               {renderCreatureItem({ item: creature })}
             </View>
           ))}
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.viewAllButton}
           onPress={() => router.push('/creatures')}
         >

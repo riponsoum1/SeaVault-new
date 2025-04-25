@@ -1,6 +1,12 @@
-import React from 'react';
-import { WebView } from 'react-native-webview';
-import { StyleSheet } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
+import MapView, { Marker, Region } from 'react-native-maps';
 
 interface DiveSite {
   id: string;
@@ -32,76 +38,119 @@ const CustomMap: React.FC<CustomMapProps> = ({
     longitudeDelta: 0.0421,
   },
 }) => {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-      </head>
-      <body style="margin:0;padding:0;">
-        <div id="map" style="width:100%;height:100vh;"></div>
-        <script>
-          const map = L.map('map').setView([${initialRegion.latitude}, ${initialRegion.longitude}], 13);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-          }).addTo(map);
+  // Filter out any dive sites without valid coordinates
+  const validDiveSites = diveSites.filter(
+    (site) => site.latitude && site.longitude
+  );
 
-          const markers = [];
-          const diveSites = ${JSON.stringify(diveSites)};
-          
-          diveSites.forEach(site => {
-            if (site.latitude && site.longitude) {
-              const marker = L.marker([site.latitude, site.longitude])
-                .bindPopup(site.name)
-                .addTo(map);
-              
-              marker.on('click', () => {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                  type: 'diveSiteSelect',
-                  id: site.id
-                }));
-              });
-              
-              markers.push(marker);
-            }
+  const mapRef = useRef<MapView | null>(null);
+
+  // Use useEffect to handle map fitting after render
+  useEffect(() => {
+    if (mapRef.current && validDiveSites.length > 0) {
+      const timeout = setTimeout(() => {
+        if (mapRef.current) {
+          const coordinates = validDiveSites.map((site) => ({
+            latitude: site.latitude,
+            longitude: site.longitude,
+          }));
+
+          mapRef.current.fitToCoordinates(coordinates, {
+            edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+            animated: true,
           });
+        }
+      }, 1000); // Delay to ensure map is fully loaded
 
-          // Fit bounds to show all markers
-          if (markers.length > 0) {
-            const group = L.featureGroup(markers);
-            map.fitBounds(group.getBounds());
-          }
-        </script>
-      </body>
-    </html>
-  `;
+      return () => clearTimeout(timeout);
+    }
+  }, [validDiveSites]);
+
+  if (validDiveSites.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.noDataText}>No dive sites available</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <WebView
-      source={{ html }}
-      style={styles.map}
-      onMessage={(event) => {
-        try {
-          const data = JSON.parse(event.nativeEvent.data);
-          if (data.type === 'diveSiteSelect') {
-            onDiveSiteSelect(data.id);
-          }
-        } catch (error) {
-          console.error('Error parsing message:', error);
-        }
-      }}
-    />
+    <View style={styles.container}>
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        initialRegion={initialRegion}
+        showsUserLocation={true}
+        showsCompass={true}
+        rotateEnabled={true}
+      >
+        {validDiveSites.map((site) => (
+          <Marker
+            key={site.id}
+            coordinate={{
+              latitude: site.latitude,
+              longitude: site.longitude,
+            }}
+            title={site.name}
+            description="Tap to select this dive site"
+            pinColor={site.id === selectedDiveSiteId ? 'green' : 'red'}
+            onPress={() => onDiveSiteSelect(site.id)}
+          />
+        ))}
+      </MapView>
+
+      {selectedDiveSiteId && (
+        <View style={styles.selectionStatus}>
+          <Text style={styles.selectionText}>
+            {diveSites.find((site) => site.id === selectedDiveSiteId)?.name ||
+              'Dive site selected'}
+          </Text>
+        </View>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    height: 400,
+    marginVertical: 16,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
   map: {
-    flex: 1,
-    height: 300,
-    marginVertical: 10,
+    width: '100%',
+    height: '100%',
+  },
+  loadingContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#121212',
+  },
+  selectionStatus: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 119, 182, 0.8)',
+    padding: 8,
+    alignItems: 'center',
+  },
+  selectionText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  noDataText: {
+    color: '#AAAAAA',
+    fontSize: 16,
   },
 });
 
-export default CustomMap; 
+export default CustomMap;

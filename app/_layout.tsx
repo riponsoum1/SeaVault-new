@@ -12,10 +12,13 @@ import Constants from 'expo-constants';
 import Purchases from 'react-native-purchases';
 import RevenueCatUI from 'react-native-purchases-ui';
 
-import { supabase } from '@/lib/supabase';
-import { useAuth, AuthProvider } from '@/context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { useAuth, AuthProvider } from '../context/AuthContext';
 import { DiveLogProvider } from '../context/DiveLogContext';
+import { DatabaseProvider } from '../context/DatabaseContext';
 import { useOnboardingStore } from '../stores/onboardingStore';
+import { setupNetworkListener } from '../database/sync';
+import { SyncNotificationProvider } from '@/context/SyncNotificationContext';
 
 // Set this to false before production
 const IS_DEVELOPMENT = true;
@@ -138,13 +141,20 @@ export default function AppLayout() {
     } else {
       console.warn('RevenueCat API key not found in Constants');
     }
+
+    // Initialize network listener for offline-to-online sync
+    setupNetworkListener();
   }, []);
 
   return (
     <AuthProvider>
-      <DiveLogProvider>
-        <InnerLayout />
-      </DiveLogProvider>
+      <DatabaseProvider>
+        <SyncNotificationProvider>
+          <DiveLogProvider>
+            <InnerLayout />
+          </DiveLogProvider>
+        </SyncNotificationProvider>
+      </DatabaseProvider>
     </AuthProvider>
   );
 }

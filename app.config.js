@@ -66,6 +66,18 @@ export default {
             'SeaVault needs your location to record where you spotted marine life.',
         },
       ],
+      '@morrowdigital/watermelondb-expo-plugin',
+      [
+        'expo-build-properties',
+        {
+          android: {
+            kotlinVersion: '1.8.10',
+            packagingOptions: {
+              pickFirst: ['**/libc++_shared.so'],
+            },
+          },
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

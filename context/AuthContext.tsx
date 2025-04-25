@@ -2,8 +2,13 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { router } from 'expo-router';
-import Purchases from 'react-native-purchases'; // 👈 added
+import Purchases from 'react-native-purchases';
 import RevenueCatUI from 'react-native-purchases-ui';
+import { database } from '../database';
+import { synchronize } from '../database/sync';
+import NetInfo from '@react-native-community/netinfo';
+import { Q } from '@nozbe/watermelondb';
+import { User as WatermelonUser } from '../database/models/User';
 
 type AuthContextType = {
   session: Session | null;
@@ -19,6 +24,9 @@ type AuthContextType = {
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateUserEmail: (email: string) => Promise<void>;
   updateUserPassword: (password: string) => Promise<void>;
+  syncData: () => Promise<{ success: boolean; message: string }>;
+  isOnline: boolean;
+  lastSynced: Date | null;
 };
 
 type UserProfile = {
@@ -44,6 +52,9 @@ const AuthContext = createContext<AuthContextType>({
   updateUserProfile: async () => {},
   updateUserEmail: async () => {},
   updateUserPassword: async () => {},
+  syncData: async () => ({ success: false, message: 'Not implemented' }),
+  isOnline: false,
+  lastSynced: null,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -52,8 +63,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(false);
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
   const clearError = () => setError(null);
+
+  // Monitor network connectivity
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOnline(state.isConnected !== null ? state.isConnected : false);
+    });
+
+    // Initial check
+    NetInfo.fetch().then((state) => {
+      setIsOnline(state.isConnected !== null ? state.isConnected : false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Sync data with Supabase when connectivity changes
+  useEffect(() => {
+    const handleSync = async () => {
+      if (isOnline && user) {
+        await syncData();
+      }
+    };
+
+    handleSync();
+  }, [isOnline, user]);
+
+  const syncData = async () => {
+    if (!user) {
+      return { success: false, message: 'No user logged in' };
+    }
+
+    if (!isOnline) {
+      return { success: false, message: 'No internet connection' };
+    }
+
+    try {
+      const result = await synchronize(user.id);
+      if (result.success) {
+        setLastSynced(new Date());
+      }
+      return result;
+    } catch (error: any) {
+      console.error('Sync error:', error);
+      return { success: false, message: error.message || 'Sync error' };
+    }
+  };
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -172,7 +233,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await Purchases.logIn(userId);
         await Purchases.syncPurchases();
 
-        // Show paywall and check access
+        // Initialize local database with user data
+        try {
+          // Check if user already exists in local DB
+          const usersCollection = database.get<WatermelonUser>('users');
+          const existingUser = await usersCollection
+            .query(Q.where('supabase_id', userId))
+            .fetch();
+
+          if (existingUser.length === 0) {
+            // Create user in local DB
+            await database.write(async () => {
+              await usersCollection.create((record) => {
+                record.supabaseId = userId;
+                record.email = email;
+                record.lastSyncedAt = Date.now();
+              });
+            });
+          }
+
+          // Sync data from Supabase
+          await syncData();
+        } catch (dbError: any) {
+          console.error('Error initializing offline database:', dbError);
+        }
       }
 
       // Don't navigate immediately - let the layout handle it
@@ -214,6 +298,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           const profile = await fetchUserProfile(session.user.id);
           setUserProfile(profile);
+
+          // Re-sync data when auth state changes
+          if (isOnline) {
+            await syncData();
+          }
         } else {
           setUserProfile(null);
         }
@@ -229,6 +318,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         const profile = await fetchUserProfile(session.user.id);
         setUserProfile(profile);
+
+        // Initial sync
+        if (isOnline) {
+          await syncData();
+        }
       }
 
       setLoading(false);
@@ -255,6 +349,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateUserProfile,
         updateUserEmail,
         updateUserPassword,
+        syncData,
+        isOnline,
+        lastSynced,
       }}
     >
       {children}

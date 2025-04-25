@@ -170,29 +170,154 @@ export default function LogDiveScreen() {
           ? `${timeOfDay}:00`
           : timeOfDay || '12:00:00';
 
-      const insertData = creatureSightings.map((creature) => ({
-        user_id: user.id,
-        creature_id: creature.id,
-        dive_site_id: selectedDiveSiteId,
-        dive_type: diveType || null,
-        time_of_day: formattedTime,
-        depth: depth ? Number(depth) : null,
-        date,
-        dive_notes: globalNotes || null,
-        creature_notes: creature.notes || null,
-        image_url: creature.imageUri || null,
-      }));
+      // Get the selected dive site for location field
+      const selectedSite = diveSites.find(
+        (site) => site.id === selectedDiveSiteId
+      );
 
-      const { error } = await supabase.from('sightings').insert(insertData);
+      let successes = 0;
+      let lastError = null;
 
-      if (error) throw error;
+      // For each creature, create a sighting entry
+      // Use different strategies for different database schema versions
+      for (const creature of creatureSightings) {
+        try {
+          // Try with the new schema first
+          const newSchemaData = {
+            user_id: user.id,
+            creature_id: creature.id,
+            dive_site_id: selectedDiveSiteId,
+            dive_type: diveType || null,
+            time_of_day: formattedTime,
+            depth: depth ? Number(depth) : null,
+            date,
+            dive_notes: globalNotes || null,
+            creature_notes: creature.notes || null,
+            image_url: creature.imageUri || null,
+            // Still provide location for compatibility with old schema
+            location: selectedSite?.name || 'Unknown location',
+          };
 
-      Alert.alert('Success', 'Dive logged successfully!');
-      router.back();
-      setSelectedCreatures([]); // Clear the selected creatures
+          const { error } = await supabase
+            .from('sightings')
+            .insert([newSchemaData]);
+
+          if (error) {
+            console.log('Error with new schema:', error);
+
+            if (
+              error.code === 'PGRST204' &&
+              error.message.includes('creature_notes')
+            ) {
+              // Fall back to old schema if creature_notes column doesn't exist
+              console.log('Falling back to old schema');
+              // Combine notes into a single field
+              const combinedNotes = `${
+                globalNotes ? globalNotes + '\n\n' : ''
+              }${creature.notes || ''}`;
+
+              const oldSchemaData = {
+                user_id: user.id,
+                creature_id: creature.id,
+                location: selectedSite?.name || 'Unknown location',
+                date,
+                notes: combinedNotes,
+                image_url: creature.imageUri || null,
+              };
+
+              const { error: oldError } = await supabase
+                .from('sightings')
+                .insert([oldSchemaData]);
+              if (oldError) {
+                console.log('Error with old schema:', oldError);
+                lastError = oldError;
+                // Continue to try with next creature
+                continue;
+              }
+            } else if (
+              error.code === 'PGRST204' &&
+              error.message.includes('dive_site_id')
+            ) {
+              // If dive_site_id column doesn't exist
+              console.log('Falling back to location-only schema');
+
+              const locationSchemaData = {
+                user_id: user.id,
+                creature_id: creature.id,
+                location: selectedSite?.name || 'Unknown location',
+                date,
+                notes: globalNotes || null,
+                image_url: creature.imageUri || null,
+              };
+
+              const { error: locError } = await supabase
+                .from('sightings')
+                .insert([locationSchemaData]);
+              if (locError) {
+                console.log('Error with location schema:', locError);
+                lastError = locError;
+                // Continue to try with next creature
+                continue;
+              }
+            } else {
+              lastError = error;
+              // Continue to try with next creature
+              continue;
+            }
+          }
+
+          // If we got here, the insert succeeded
+          successes++;
+        } catch (creatureError: any) {
+          console.error('Error adding creature sighting:', creatureError);
+          lastError = creatureError;
+          // Continue to try with next creature
+        }
+      }
+
+      if (successes > 0) {
+        if (successes < creatureSightings.length) {
+          Alert.alert(
+            'Partial Success',
+            `${successes} out of ${creatureSightings.length} creatures were logged successfully.`,
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        } else {
+          Alert.alert('Success', 'Dive logged successfully!');
+          router.back();
+        }
+        setSelectedCreatures([]); // Clear the selected creatures
+      } else {
+        // No creatures were added successfully
+        throw lastError || new Error('Failed to add any creatures');
+      }
     } catch (e: any) {
-      console.error(e);
-      setError(e.message || 'Failed to log dive');
+      console.error('Final error:', e);
+      let errorMessage = 'Failed to log dive';
+
+      if (e?.message) {
+        errorMessage = e.message;
+      }
+
+      if (e?.code === 'PGRST204') {
+        errorMessage =
+          'Database schema issue. Please update your database or contact support.';
+      }
+
+      if (
+        e?.code === '42702' ||
+        (e?.message && e?.message.includes('ambiguous'))
+      ) {
+        errorMessage =
+          'Database trigger issue. The system needs to be updated to handle achievement tracking correctly.';
+      }
+
+      if (String(e).includes('Cannot read property')) {
+        errorMessage =
+          'There was a problem with the data format. Please try again or contact support.';
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -230,13 +355,44 @@ export default function LogDiveScreen() {
           placeholderTextColor="#666"
         />
 
-        {mapRegion && (
+        <Text style={styles.label}>Dive Site</Text>
+        <Text style={styles.sublabel}>
+          Tap a marker on the map to select a dive site
+        </Text>
+
+        {mapRegion ? (
           <CustomMap
             diveSites={filteredDiveSites}
             selectedDiveSiteId={selectedDiveSiteId}
-            onDiveSiteSelect={setSelectedDiveSiteId}
+            onDiveSiteSelect={(id) => {
+              setSelectedDiveSiteId(id);
+              // Clear any previous error about dive site selection
+              if (error === 'Please select a dive site') {
+                setError(null);
+              }
+            }}
             initialRegion={mapRegion}
           />
+        ) : (
+          <View style={styles.mapLoadingContainer}>
+            <ActivityIndicator size="large" color="#0077B6" />
+            <Text style={styles.mapLoadingText}>Loading map...</Text>
+          </View>
+        )}
+
+        {selectedDiveSiteId ? (
+          <View style={styles.selectedSiteContainer}>
+            <Text style={styles.selectedSiteText}>
+              Selected:{' '}
+              {diveSites.find((site) => site.id === selectedDiveSiteId)?.name}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.selectedSiteContainer}>
+            <Text style={[styles.selectedSiteText, styles.unselectedText]}>
+              No dive site selected
+            </Text>
+          </View>
         )}
 
         <Text style={styles.label}>Dive Type</Text>
@@ -467,6 +623,11 @@ const styles = StyleSheet.create({
     marginTop: 15,
     marginBottom: 8,
   },
+  sublabel: {
+    color: '#AAAAAA',
+    fontSize: 12,
+    marginBottom: 8,
+  },
   creatureCard: {
     backgroundColor: '#1E1E1E',
     borderRadius: 12,
@@ -611,5 +772,31 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  mapLoadingContainer: {
+    height: 400,
+    backgroundColor: '#1E1E1E',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  mapLoadingText: {
+    color: '#AAAAAA',
+    marginTop: 10,
+  },
+  selectedSiteContainer: {
+    backgroundColor: '#1E1E1E',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  selectedSiteText: {
+    color: '#0077B6',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  unselectedText: {
+    color: '#666666',
   },
 });
