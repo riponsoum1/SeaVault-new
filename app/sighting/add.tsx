@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, Platform, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  Image,
+  Platform,
+  Modal,
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase, uploadSightingImage } from '../../lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,7 +20,7 @@ import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '../../context/AuthContext';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
 import { ChevronLeft, Camera, Calendar, MapPin } from 'lucide-react-native';
-import CustomMap from '../components/CustomMap';
+import CustomMap from '../../components/CustomMap';
 
 const DIVE_TYPES = ['Shore', 'Boat', 'Wreck', 'Drift', 'Cave', 'Night', 'Deep'];
 
@@ -26,7 +38,9 @@ export default function AddSightingScreen() {
 
   const [diveSites, setDiveSites] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDiveSiteId, setSelectedDiveSiteId] = useState<string | null>(null);
+  const [selectedDiveSiteId, setSelectedDiveSiteId] = useState<string | null>(
+    null
+  );
   const [mapRegion, setMapRegion] = useState<any>(null);
 
   const [diveType, setDiveType] = useState('');
@@ -47,26 +61,39 @@ export default function AddSightingScreen() {
       });
     })();
 
-    supabase.from('dive_sites').select('*').then(({ data }) => {
-      if (data) setDiveSites(data);
-    });
+    supabase
+      .from('dive_sites')
+      .select('*')
+      .then(({ data }) => {
+        if (data) setDiveSites(data);
+      });
   }, []);
 
-  const filteredDiveSites = diveSites.filter(site =>
+  const filteredDiveSites = diveSites.filter((site) =>
     site.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return;
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
     if (!result.canceled) setImageUri(result.assets[0].uri);
   };
 
   const takePicture = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return;
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
     if (!result.canceled) setImageUri(result.assets[0].uri);
   };
 
@@ -79,21 +106,24 @@ export default function AddSightingScreen() {
       setLoading(true);
       let imageUrl = imageUri ? await uploadImage(imageUri) : null;
 
-      const formattedTime = timeOfDay && timeOfDay.length === 5
-        ? `${timeOfDay}:00`
-        : timeOfDay || '12:00:00';
+      const formattedTime =
+        timeOfDay && timeOfDay.length === 5
+          ? `${timeOfDay}:00`
+          : timeOfDay || '12:00:00';
 
-      const { error } = await supabase.from('sightings').insert([{
-        user_id: user.id,
-        creature_id: creatureId,
-        dive_site_id: selectedDiveSiteId,
-        dive_type: diveType || null,
-        time_of_day: formattedTime,
-        depth: depth ? Number(depth) : null,
-        date,
-        creature_notes,
-        image_url: imageUrl,
-      }]);
+      const { error } = await supabase.from('sightings').insert([
+        {
+          user_id: user.id,
+          creature_id: creatureId,
+          dive_site_id: selectedDiveSiteId,
+          dive_type: diveType || null,
+          time_of_day: formattedTime,
+          depth: depth ? Number(depth) : null,
+          date,
+          creature_notes,
+          image_url: imageUrl,
+        },
+      ]);
 
       if (error) throw error;
 
@@ -122,7 +152,10 @@ export default function AddSightingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
           <ChevronLeft color="white" size={24} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add Sighting</Text>
@@ -163,7 +196,11 @@ export default function AddSightingScreen() {
             {diveType || 'Select dive type'}
           </Text>
           <View style={styles.pickerArrow}>
-            <ChevronLeft size={20} color="white" style={{ transform: [{ rotate: '90deg' }] }} />
+            <ChevronLeft
+              size={20}
+              color="white"
+              style={{ transform: [{ rotate: '90deg' }] }}
+            />
           </View>
         </TouchableOpacity>
 
@@ -214,7 +251,7 @@ export default function AddSightingScreen() {
         </TouchableOpacity>
 
         {/* Save Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.saveButton, loading && styles.saveButtonDisabled]}
           onPress={saveSighting}
           disabled={loading}
@@ -249,7 +286,12 @@ export default function AddSightingScreen() {
             >
               <Picker.Item label="Select dive type" value="" color="white" />
               {DIVE_TYPES.map((type) => (
-                <Picker.Item key={type} label={type} value={type} color="white" />
+                <Picker.Item
+                  key={type}
+                  label={type}
+                  value={type}
+                  color="white"
+                />
               ))}
             </Picker>
           </View>

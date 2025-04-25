@@ -32,10 +32,6 @@ const ExpoSecureStoreAdapter = {
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Add console logs to debug connection issues
-console.log('Supabase URL:', supabaseUrl);
-console.log('Supabase Key length:', supabaseAnonKey ? supabaseAnonKey.length : 0);
-
 // Check if environment variables are properly set
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables!');
@@ -50,10 +46,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-export const uploadAvatar = async (uri: string, userId: string): Promise<string> => {
+export const uploadAvatar = async (
+  uri: string,
+  userId: string
+): Promise<string> => {
   try {
     console.log('Starting avatar upload for URI:', uri);
-    
+
     // Get the file name and extension
     const fileName = uri.split('/').pop();
     const fileExt = fileName?.split('.').pop();
@@ -74,7 +73,7 @@ export const uploadAvatar = async (uri: string, userId: string): Promise<string>
       .upload(`${userId}/${newFileName}`, decode(base64File), {
         contentType: `image/${fileExt}`,
         cacheControl: '3600',
-        upsert: false
+        upsert: false,
       });
 
     if (error) {
@@ -109,17 +108,26 @@ export const uploadAvatar = async (uri: string, userId: string): Promise<string>
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
-    throw new Error(`Failed to upload avatar: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to upload avatar: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
   }
 };
 
 // Helper function to decode base64
 function decode(base64: string) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   let bufferLength = base64.length * 0.75,
-      len = base64.length,
-      i, p = 0,
-      encoded1, encoded2, encoded3, encoded4;
+    len = base64.length,
+    i,
+    p = 0,
+    encoded1,
+    encoded2,
+    encoded3,
+    encoded4;
 
   if (base64[base64.length - 1] === '=') {
     bufferLength--;
@@ -129,7 +137,7 @@ function decode(base64: string) {
   }
 
   const arraybuffer = new ArrayBuffer(bufferLength),
-        bytes = new Uint8Array(arraybuffer);
+    bytes = new Uint8Array(arraybuffer);
 
   for (i = 0; i < len; i += 4) {
     encoded1 = chars.indexOf(base64[i]);
@@ -148,10 +156,8 @@ function decode(base64: string) {
 // Helper function to delete old avatar
 export const deleteOldAvatar = async (filePath: string): Promise<void> => {
   try {
-    const { error } = await supabase.storage
-      .from('avatars')
-      .remove([filePath]);
-    
+    const { error } = await supabase.storage.from('avatars').remove([filePath]);
+
     if (error) {
       throw error;
     }
@@ -161,27 +167,13 @@ export const deleteOldAvatar = async (filePath: string): Promise<void> => {
   }
 };
 
-// Add a simple test query to verify connection
-export const testSupabaseConnection = async () => {
-  try {
-    console.log('Testing Supabase connection...');
-    const { data, error } = await supabase.from('categories').select('count');
-    if (error) {
-      console.error('Supabase connection test failed:', error);
-      return false;
-    }
-    console.log('Supabase connection successful:', data);
-    return true;
-  } catch (err) {
-    console.error('Supabase connection test exception:', err);
-    return false;
-  }
-};
-
-export const uploadSightingImage = async (uri: string, userId: string): Promise<string> => {
+export const uploadSightingImage = async (
+  uri: string,
+  userId: string
+): Promise<string> => {
   try {
     console.log('Starting sighting image upload for URI:', uri);
-    
+
     // Get the file name and extension
     const fileName = uri.split('/').pop();
     const fileExt = fileName?.split('.').pop();
@@ -202,7 +194,7 @@ export const uploadSightingImage = async (uri: string, userId: string): Promise<
       .upload(`${userId}/${newFileName}`, decode(base64File), {
         contentType: `image/${fileExt}`,
         cacheControl: '3600',
-        upsert: false
+        upsert: false,
       });
 
     if (error) {
@@ -237,17 +229,23 @@ export const uploadSightingImage = async (uri: string, userId: string): Promise<
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
-    throw new Error(`Failed to upload sighting image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to upload sighting image: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
   }
 };
 
 // Helper function to delete old sighting image
-export const deleteOldSightingImage = async (filePath: string): Promise<void> => {
+export const deleteOldSightingImage = async (
+  filePath: string
+): Promise<void> => {
   try {
     const { error } = await supabase.storage
       .from('sightings')
       .remove([filePath]);
-    
+
     if (error) {
       throw error;
     }

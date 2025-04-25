@@ -1,16 +1,39 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  RefreshControl,
+} from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { router } from 'expo-router';
-import { LogOut, User as UserIcon, Award, Heart, BookOpen, Share2, Settings } from 'lucide-react-native';
+import {
+  LogOut,
+  User as UserIcon,
+  Award,
+  Heart,
+  BookOpen,
+  Settings,
+} from 'lucide-react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
 import Purchases from 'react-native-purchases';
 import React from 'react'; // 👈 fixes UMD global error
+import {
+  ProfileSkeleton,
+  StatsSkeleton,
+} from '../../components/SkeletonLoading';
 
 export default function ProfileScreen() {
   const { user, userProfile, signOut, loading } = useAuth();
-  const [stats, setStats] = useState({ discovered: 0, favorites: 0, points: 0 });
+  const [stats, setStats] = useState({
+    discovered: 0,
+    favorites: 0,
+    points: 0,
+  });
   const [statsLoading, setStatsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [membershipStatus, setMembershipStatus] = useState('Loading...');
@@ -30,7 +53,9 @@ export default function ProfileScreen() {
         .select('creature_id')
         .eq('user_id', user!.id);
 
-      const uniqueCreaturesSighted = [...new Set(sightingsData!.map(s => s.creature_id))];
+      const uniqueCreaturesSighted = [
+        ...new Set(sightingsData!.map((s) => s.creature_id)),
+      ];
       const { data: wishlistData = [] } = await supabase
         .from('wishlists')
         .select('id')
@@ -43,13 +68,14 @@ export default function ProfileScreen() {
           .select('points')
           .in('id', uniqueCreaturesSighted);
 
-        totalPoints = pointsData?.reduce((sum, creature) => sum + creature.points, 0) ?? 0;
+        totalPoints =
+          pointsData?.reduce((sum, creature) => sum + creature.points, 0) ?? 0;
       }
 
       setStats({
         discovered: uniqueCreaturesSighted.length,
         favorites: wishlistData?.length ?? 0,
-        points: totalPoints
+        points: totalPoints,
       });
 
       await checkAndUpdateAchievements(user!.id);
@@ -84,7 +110,7 @@ export default function ProfileScreen() {
   }, []);
 
   if (loading) {
-    return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#0077B6" /></View>;
+    return <ProfileSkeleton />;
   }
 
   if (!user) {
@@ -95,17 +121,26 @@ export default function ProfileScreen() {
   return (
     <ScrollView
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
           {userProfile?.avatar_url ? (
-            <Image source={{ uri: userProfile.avatar_url }} style={styles.avatarImage} />
+            <Image
+              source={{ uri: userProfile.avatar_url }}
+              style={styles.avatarImage}
+            />
           ) : (
-            <Text style={styles.avatarText}>{userProfile?.full_name?.[0] || user.email?.[0]}</Text>
+            <Text style={styles.avatarText}>
+              {userProfile?.full_name?.[0] || user.email?.[0]}
+            </Text>
           )}
         </View>
-        <Text style={styles.name}>{userProfile?.full_name || 'Sea Explorer'}</Text>
+        <Text style={styles.name}>
+          {userProfile?.full_name || 'Sea Explorer'}
+        </Text>
         <Text style={styles.email}>{user.email}</Text>
 
         <View style={styles.membershipBadge}>
@@ -115,7 +150,7 @@ export default function ProfileScreen() {
 
       <View style={styles.statsContainer}>
         {statsLoading ? (
-          <ActivityIndicator size="small" color="#0077B6" />
+          <StatsSkeleton />
         ) : (
           <>
             <View style={styles.statItem}>
@@ -137,7 +172,10 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
 
-        <TouchableOpacity style={styles.editProfileButton} onPress={() => router.push('/account/edit-profile')}>
+        <TouchableOpacity
+          style={styles.editProfileButton}
+          onPress={() => router.push('/account/edit-profile')}
+        >
           <Settings size={20} color="white" />
           <Text style={styles.editProfileText}>Edit Profile</Text>
         </TouchableOpacity>
@@ -146,17 +184,26 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Collections</Text>
 
-        <TouchableOpacity onPress={() => router.push('/wishlist')} style={styles.menuItem}>
+        <TouchableOpacity
+          onPress={() => router.push('/wishlist')}
+          style={styles.menuItem}
+        >
           <Heart size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Favorites</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/achievements')} style={styles.menuItem}>
+        <TouchableOpacity
+          onPress={() => router.push('/achievements')}
+          style={styles.menuItem}
+        >
           <Award size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Achievements</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/sightings')} style={styles.menuItem}>
+        <TouchableOpacity
+          onPress={() => router.push('/sightings')}
+          style={styles.menuItem}
+        >
           <BookOpen size={20} color="#0077B6" />
           <Text style={styles.menuItemText}>Your Sightings</Text>
         </TouchableOpacity>
@@ -169,7 +216,6 @@ export default function ProfileScreen() {
     </ScrollView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -327,6 +373,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 20,
   },
   logoutText: {
     color: '#FF6B6B',

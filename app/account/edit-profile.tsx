@@ -1,16 +1,33 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Image, Platform, Linking } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  Linking,
+  ScrollView,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase, uploadAvatar, deleteOldAvatar } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { ChevronLeft, Camera, Upload, User as UserIcon } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  Camera,
+  Upload,
+  User as UserIcon,
+} from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Purchases from 'react-native-purchases';
 
 export default function EditProfileScreen() {
   const router = useRouter();
   const { user, userProfile, updateUserProfile } = useAuth();
-  
+
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,7 +48,11 @@ export default function EditProfileScreen() {
       const info = await Purchases.getCustomerInfo();
       if (info.entitlements.active['pro']) {
         const entitlement = info.entitlements.active['pro'];
-        setPlan(entitlement.periodType === 'trial' ? 'Free Trial' : 'Active Subscription');
+        setPlan(
+          entitlement.periodType === 'trial'
+            ? 'Free Trial'
+            : 'Active Subscription'
+        );
       } else {
         setPlan('Free Account');
       }
@@ -46,7 +67,9 @@ export default function EditProfileScreen() {
       if (Platform.OS === 'ios') {
         await Linking.openURL('https://apps.apple.com/account/subscriptions');
       } else {
-        await Linking.openURL('https://play.google.com/store/account/subscriptions');
+        await Linking.openURL(
+          'https://play.google.com/store/account/subscriptions'
+        );
       }
     } catch (error) {
       console.error('Failed to open subscription settings:', error);
@@ -55,10 +78,14 @@ export default function EditProfileScreen() {
 
   const pickImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library to add images.');
+        Alert.alert(
+          'Permission Required',
+          'Please allow access to your photo library to add images.'
+        );
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -67,7 +94,7 @@ export default function EditProfileScreen() {
         aspect: [1, 1],
         quality: 0.8,
       });
-      
+
       if (!result.canceled) {
         setAvatarUrl(result.assets[0].uri);
       }
@@ -80,9 +107,12 @@ export default function EditProfileScreen() {
   const takePicture = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      
+
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your camera to take pictures.');
+        Alert.alert(
+          'Permission Required',
+          'Please allow access to your camera to take pictures.'
+        );
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -91,7 +121,7 @@ export default function EditProfileScreen() {
         aspect: [1, 1],
         quality: 0.8,
       });
-      
+
       if (!result.canceled) {
         setAvatarUrl(result.assets[0].uri);
       }
@@ -106,14 +136,14 @@ export default function EditProfileScreen() {
       Alert.alert('Error', 'You must be logged in to update your profile.');
       return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
       setSuccess(false);
-      
+
       let finalAvatarUrl = userProfile?.avatar_url;
-      
+
       // Only handle avatar upload if a new image was selected
       if (avatarUrl && avatarUrl !== userProfile?.avatar_url) {
         try {
@@ -124,20 +154,23 @@ export default function EditProfileScreen() {
               await deleteOldAvatar(oldFilePath);
             }
           }
-          
+
           // Upload new avatar
           console.log('Starting avatar upload process...');
           finalAvatarUrl = await uploadAvatar(avatarUrl, user.id);
           console.log('Avatar upload completed, URL:', finalAvatarUrl);
         } catch (uploadError) {
           console.error('Avatar upload error:', uploadError);
-          Alert.alert('Error', 'Failed to upload profile picture. Please try again.');
+          Alert.alert(
+            'Error',
+            'Failed to upload profile picture. Please try again.'
+          );
           return;
         }
       }
 
       console.log('Updating profile with avatar URL:', finalAvatarUrl);
-      
+
       // Update profile in database
       const { error: updateError } = await supabase
         .from('profiles')
@@ -162,7 +195,7 @@ export default function EditProfileScreen() {
         });
         console.log('Local profile state updated');
       }
-      
+
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
@@ -178,102 +211,111 @@ export default function EditProfileScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
           <ChevronLeft color="white" size={24} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
         <View style={styles.placeholder} />
       </View>
-      
-      <View style={styles.content}>
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-        
-        {success && (
-          <View style={styles.successContainer}>
-            <Text style={styles.successText}>Profile updated successfully!</Text>
-          </View>
-        )}
-        
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarContainer}>
-            {avatarUrl ? (
-              <Image 
-                source={{ uri: avatarUrl }} 
-                style={styles.avatar}
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {fullName 
-                    ? fullName.charAt(0).toUpperCase() 
-                    : user?.email?.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          <View style={styles.avatarButtons}>
-            <TouchableOpacity style={styles.avatarButton} onPress={takePicture}>
-              <Camera size={20} color="white" />
-              <Text style={styles.avatarButtonText}>Camera</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.avatarButton} onPress={pickImage}>
-              <Upload size={20} color="white" />
-              <Text style={styles.avatarButtonText}>Gallery</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Full Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your full name"
-            placeholderTextColor="#777777"
-            value={fullName}
-            onChangeText={setFullName}
-          />
-        </View>
-        
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Email</Text>
-          <View style={styles.emailContainer}>
-            <Text style={styles.emailText}>{user?.email}</Text>
-            <TouchableOpacity 
-              style={styles.changeEmailButton}
-              onPress={() => router.push('/account/change-email')}
-            >
-              <Text style={styles.changeEmailText}>Change</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.passwordButton}
-          onPress={() => router.push('/account/change-password')}
-        >
-          <Text style={styles.passwordButtonText}>Change Password</Text>
-        </TouchableOpacity>
 
-        <View style={styles.membershipSection}>
-          <Text style={styles.membershipTitle}>Membership</Text>
-          <Text style={styles.planText}>Current Plan: {plan}</Text>
-          <TouchableOpacity 
-            style={styles.manageSubscriptionButton}
-            onPress={openManageSubscription}
+      <ScrollView style={styles.scrollContainer}>
+        <View style={styles.content}>
+          {error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
+          {success && (
+            <View style={styles.successContainer}>
+              <Text style={styles.successText}>
+                Profile updated successfully!
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.avatarSection}>
+            <View style={styles.avatarContainer}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarText}>
+                    {fullName
+                      ? fullName.charAt(0).toUpperCase()
+                      : user?.email?.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.avatarButtons}>
+              <TouchableOpacity
+                style={styles.avatarButton}
+                onPress={takePicture}
+              >
+                <Camera size={20} color="white" />
+                <Text style={styles.avatarButtonText}>Camera</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.avatarButton} onPress={pickImage}>
+                <Upload size={20} color="white" />
+                <Text style={styles.avatarButtonText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Full Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your full name"
+              placeholderTextColor="#777777"
+              value={fullName}
+              onChangeText={setFullName}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Email</Text>
+            <View style={styles.emailContainer}>
+              <Text style={styles.emailText}>{user?.email}</Text>
+              <TouchableOpacity
+                style={styles.changeEmailButton}
+                onPress={() => router.push('/account/change-email')}
+              >
+                <Text style={styles.changeEmailText}>Change</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.passwordButton}
+            onPress={() => router.push('/account/change-password')}
           >
-            <Text style={styles.manageSubscriptionText}>Manage Subscription</Text>
+            <Text style={styles.passwordButtonText}>Change Password</Text>
           </TouchableOpacity>
+
+          <View style={styles.membershipSection}>
+            <Text style={styles.membershipTitle}>Membership</Text>
+            <Text style={styles.planText}>Current Plan: {plan}</Text>
+            <TouchableOpacity
+              style={styles.manageSubscriptionButton}
+              onPress={openManageSubscription}
+            >
+              <Text style={styles.manageSubscriptionText}>
+                Manage Subscription
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-      
+      </ScrollView>
+
       <View style={styles.footer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.saveButton}
           onPress={updateProfile}
           disabled={loading}
@@ -484,5 +526,8 @@ const styles = StyleSheet.create({
     color: '#0077B6',
     fontSize: 16,
     fontWeight: '500',
+  },
+  scrollContainer: {
+    flex: 1,
   },
 });

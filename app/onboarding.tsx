@@ -17,19 +17,22 @@ const slides = [
   {
     id: '1',
     title: 'Track Your Dives',
-    description: 'Log your underwater adventures and keep track of the amazing creatures you encounter.',
+    description:
+      'Log your underwater adventures and keep track of the amazing creatures you encounter.',
     image: require('../assets/images/onboarding-1.png'),
   },
   {
     id: '2',
     title: 'Discover Marine Life',
-    description: 'Learn about different species and their habitats as you explore the ocean.',
+    description:
+      'Learn about different species and their habitats as you explore the ocean.',
     image: require('../assets/images/onboarding-2.png'),
   },
   {
     id: '3',
     title: 'Share Your Journey',
-    description: 'Connect with other divers and share your experiences with the community.',
+    description:
+      'Connect with other divers and share your experiences with the community.',
     image: require('../assets/images/onboarding-3.png'),
   },
 ];
@@ -63,7 +66,9 @@ export default function OnboardingScreen() {
         />
         <View style={styles.textContainer}>
           <Text style={styles.title}>{slides[currentSlide].title}</Text>
-          <Text style={styles.description}>{slides[currentSlide].description}</Text>
+          <Text style={styles.description}>
+            {slides[currentSlide].description}
+          </Text>
         </View>
       </View>
 
@@ -172,4 +177,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 8,
   },
-}); 
+});
