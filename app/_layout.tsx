@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, Slot } from 'expo-router';
 import Constants from 'expo-constants';
 import Purchases from 'react-native-purchases';
 import RevenueCatUI from 'react-native-purchases-ui';
@@ -8,7 +8,10 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { supabase } from '@/lib/supabase';
 import { useAuth, AuthProvider } from '@/context/AuthContext';
 import { DiveLogProvider } from '../context/DiveLogContext';
-import { OnboardingProvider, useOnboarding } from '../context/OnboardingContext';
+import {
+  OnboardingProvider,
+  useOnboarding,
+} from '../context/OnboardingContext';
 
 function InnerLayout() {
   const { user, loading: authLoading } = useAuth();
@@ -21,8 +24,10 @@ function InnerLayout() {
   const isOnboardingRoute = segments[0] === 'onboarding';
 
   useEffect(() => {
+    if (authLoading || isAuthRoute || isOnboardingRoute) return;
+
     const checkAccess = async () => {
-      if (!user || isAuthRoute || isOnboardingRoute) {
+      if (!user) {
         setCheckingSub(false);
         return;
       }
@@ -51,22 +56,36 @@ function InnerLayout() {
         }
       } catch (err) {
         console.warn('Access check failed:', err);
-        router.replace('/auth/login');
       } finally {
         setCheckingSub(false);
       }
     };
 
-    if (!authLoading) {
-      checkAccess();
-    }
-  }, [user, authLoading, isAuthRoute, isOnboardingRoute]);
+    checkAccess();
+  }, [user, authLoading, isAuthRoute, isOnboardingRoute, router]);
 
   useEffect(() => {
-    if (!authLoading && !user && !hasSeenOnboarding) {
-      router.replace('/onboarding');
+    if (
+      !authLoading &&
+      !user &&
+      !hasSeenOnboarding &&
+      !isOnboardingRoute &&
+      !isAuthRoute
+    ) {
+      // Delay navigation until after initial render
+      const timer = setTimeout(() => {
+        router.replace('/onboarding');
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [authLoading, user, hasSeenOnboarding]);
+  }, [
+    authLoading,
+    user,
+    hasSeenOnboarding,
+    isOnboardingRoute,
+    isAuthRoute,
+    router,
+  ]);
 
   if (authLoading || checkingSub) {
     return (
@@ -76,22 +95,7 @@ function InnerLayout() {
     );
   }
 
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-      <Stack.Screen name="auth/register" options={{ headerShown: false }} />
-      <Stack.Screen name="creature/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="Select-Creatures" options={{ headerShown: false }} />
-      <Stack.Screen name="account/edit-profile" options={{ headerShown: false }} />
-      <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="wishlist" />
-      <Stack.Screen name="sightings" />
-      <Stack.Screen name="achievements" />
-      <Stack.Screen name="+not-found" />
-    </Stack>
-  );
+  return <Slot />;
 }
 
 export default function AppLayout() {
