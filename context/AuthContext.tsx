@@ -129,21 +129,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       clearError();
-  
+
       const { data, error } = await supabase.auth.signUp({ email, password });
-  
+
       if (error) {
         setError(error.message);
         return;
       }
-  
+
       const userId = data.user?.id;
       if (userId) {
         await Purchases.logIn(userId);
         await Purchases.syncPurchases();
       }
-  
-      router.replace('/');
+
+      // Don't navigate immediately - let the layout handle it
+      // router.replace('/');
     } catch (error: any) {
       setError(error.message || 'An unexpected error occurred');
     } finally {
@@ -155,27 +156,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       clearError();
-  
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-  
+
       if (error) {
         setError(error.message);
         return;
       }
-  
+
       const userId = data.user?.id;
       if (userId) {
         await Purchases.logIn(userId);
         await Purchases.syncPurchases();
-  
-        // Show paywall and check access
 
+        // Show paywall and check access
       }
-  
-      router.replace('/');
+
+      // Don't navigate immediately - let the layout handle it
+      // router.replace('/');
     } catch (error: any) {
       setError(error.message || 'An unexpected error occurred');
     } finally {
@@ -205,19 +206,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const { data } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
 
-      if (session?.user) {
-        const profile = await fetchUserProfile(session.user.id);
-        setUserProfile(profile);
-      } else {
-        setUserProfile(null);
+        if (session?.user) {
+          const profile = await fetchUserProfile(session.user.id);
+          setUserProfile(profile);
+        } else {
+          setUserProfile(null);
+        }
+
+        setLoading(false);
       }
-
-      setLoading(false);
-    });
+    );
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);

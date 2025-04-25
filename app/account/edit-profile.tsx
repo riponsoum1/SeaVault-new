@@ -149,10 +149,8 @@ export default function EditProfileScreen() {
         try {
           // Delete old avatar if it exists
           if (userProfile?.avatar_url) {
-            const oldFilePath = userProfile.avatar_url.split('/').pop();
-            if (oldFilePath) {
-              await deleteOldAvatar(oldFilePath);
-            }
+            const oldFilePath = userProfile.avatar_url;
+            await deleteOldAvatar(oldFilePath);
           }
 
           // Upload new avatar

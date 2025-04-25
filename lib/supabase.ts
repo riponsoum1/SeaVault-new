@@ -4,26 +4,91 @@ import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 
+// Maximum size for each chunk (slightly less than 2048 to be safe)
+const MAX_CHUNK_SIZE = 2000;
+
 // Use secure storage for native platforms, localStorage for web
 const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => {
+  getItem: async (key: string) => {
     if (Platform.OS === 'web') {
       return localStorage.getItem(key);
     }
-    return SecureStore.getItemAsync(key);
+
+    // Check if this item is stored in chunks
+    const numChunksStr = await SecureStore.getItemAsync(`${key}_chunks`);
+
+    if (numChunksStr) {
+      // Item is stored in chunks, need to reassemble
+      const numChunks = parseInt(numChunksStr);
+      let value = '';
+
+      for (let i = 0; i < numChunks; i++) {
+        const chunk = await SecureStore.getItemAsync(`${key}_${i}`);
+        if (chunk) {
+          value += chunk;
+        } else {
+          console.warn(`Missing chunk ${i} for key ${key}`);
+        }
+      }
+
+      return value;
+    } else {
+      // Regular item, retrieve normally
+      return SecureStore.getItemAsync(key);
+    }
   },
-  setItem: (key: string, value: string) => {
+
+  setItem: async (key: string, value: string) => {
     if (Platform.OS === 'web') {
       localStorage.setItem(key, value);
       return;
     }
-    return SecureStore.setItemAsync(key, value);
+
+    if (value.length > MAX_CHUNK_SIZE) {
+      // Value is too large, need to split into chunks
+      const numChunks = Math.ceil(value.length / MAX_CHUNK_SIZE);
+
+      // Store the number of chunks
+      await SecureStore.setItemAsync(`${key}_chunks`, numChunks.toString());
+
+      // Store each chunk
+      for (let i = 0; i < numChunks; i++) {
+        const start = i * MAX_CHUNK_SIZE;
+        const end = Math.min(start + MAX_CHUNK_SIZE, value.length);
+        const chunk = value.substring(start, end);
+        await SecureStore.setItemAsync(`${key}_${i}`, chunk);
+      }
+
+      return;
+    } else {
+      // Value is small enough, store normally
+      return SecureStore.setItemAsync(key, value);
+    }
   },
-  removeItem: (key: string) => {
+
+  removeItem: async (key: string) => {
     if (Platform.OS === 'web') {
       localStorage.removeItem(key);
       return;
     }
+
+    // Check if this item is stored in chunks
+    const numChunksStr = await SecureStore.getItemAsync(`${key}_chunks`);
+
+    if (numChunksStr) {
+      // Item is stored in chunks, need to remove all chunks
+      const numChunks = parseInt(numChunksStr);
+
+      // Remove each chunk
+      for (let i = 0; i < numChunks; i++) {
+        await SecureStore.deleteItemAsync(`${key}_${i}`);
+      }
+
+      // Remove the chunks metadata
+      await SecureStore.deleteItemAsync(`${key}_chunks`);
+    }
+
+    // Also try to remove the key directly (in case it exists or for backward compatibility)
     return SecureStore.deleteItemAsync(key);
   },
 };
@@ -156,7 +221,24 @@ function decode(base64: string) {
 // Helper function to delete old avatar
 export const deleteOldAvatar = async (filePath: string): Promise<void> => {
   try {
-    const { error } = await supabase.storage.from('avatars').remove([filePath]);
+    let path = filePath;
+
+    // If it's a full URL, extract the path after 'avatars/'
+    if (filePath.includes('avatars/')) {
+      const parts = filePath.split('avatars/');
+      if (parts.length > 1) {
+        path = parts[1];
+      }
+    } else if (!filePath.includes('/')) {
+      console.error(
+        'Cannot delete avatar: file path does not include user ID',
+        filePath
+      );
+      return;
+    }
+
+    console.log('Deleting avatar at path:', path);
+    const { error } = await supabase.storage.from('avatars').remove([path]);
 
     if (error) {
       throw error;
