@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Search, Plus, List, User } from 'lucide-react-native';
+import { Home, List, User } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -25,11 +25,34 @@ export default function TabLayout() {
         },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ size, color }) => <Home size={size} color={color} /> }} />
-      <Tabs.Screen name="explore" options={{ title: 'Explore', tabBarIcon: ({ size, color }) => <Search size={size} color={color} />, href: null }} />
-      <Tabs.Screen name="add" options={{ title: 'Add', tabBarIcon: ({ size, color }) => <Plus size={size} color={color} />, href: null }} />
-      <Tabs.Screen name="creatures" options={{ title: 'Collection', tabBarIcon: ({ size, color }) => <List size={size} color={color} /> }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ size, color }) => <User size={size} color={color} /> }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ size, color }: { size: number; color: string }) => (
+            <Home size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="creatures"
+        options={{
+          title: 'Collection',
+          tabBarIcon: ({ size, color }: { size: number; color: string }) => (
+            <List size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ size, color }: { size: number; color: string }) => (
+            <User size={size} color={color} />
+          ),
+        }}
+      />
       <Tabs.Screen name="creature" options={{ href: null }} />
     </Tabs>
   );
