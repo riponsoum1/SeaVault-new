@@ -1,10 +1,27 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image, Modal, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Creature, Sighting } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
-import { ChevronLeft, Camera, Calendar, MapPin, Anchor, X } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  Camera,
+  Calendar,
+  MapPin,
+  Anchor,
+  X,
+} from 'lucide-react-native';
 
 type DiveSite = {
   name: string;
@@ -40,54 +57,58 @@ export default function SightingsScreen() {
 
   const fetchSightings = async () => {
     if (!user) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       // Get all sightings for the user with dive site information
       const { data: sightingsData, error: sightingsError } = await supabase
         .from('sightings')
-        .select(`
+        .select(
+          `
           *,
           dive_sites!inner (
             name
           ),
           creature:creature_id (*)
-        `)
+        `
+        )
         .eq('user_id', user.id)
         .order('date', { ascending: false });
-        
+
       if (sightingsError) throw sightingsError;
-      
+
       if (sightingsData.length === 0) {
         setSightings([]);
         return;
       }
-      
+
       // Get all creature IDs from the sightings
-      const creatureIds = Array.from(new Set(sightingsData.map(s => s.creature_id)));
-      
+      const creatureIds = Array.from(
+        new Set(sightingsData.map((s) => s.creature_id))
+      );
+
       // Fetch creature details for those IDs
       const { data: creaturesData, error: creaturesError } = await supabase
         .from('creatures')
         .select('*')
         .in('id', creatureIds);
-        
+
       if (creaturesError) throw creaturesError;
-      
+
       // Create a map of creature IDs to creature objects for quick lookup
       const creaturesMap = new Map<string, Creature>();
-      creaturesData.forEach(creature => {
+      creaturesData.forEach((creature) => {
         creaturesMap.set(creature.id, creature as Creature);
       });
-      
+
       // Combine sightings with their creature data
-      const sightingsWithCreatures = sightingsData.map(sighting => ({
+      const sightingsWithCreatures = sightingsData.map((sighting) => ({
         ...sighting,
-        creature: creaturesMap.get(sighting.creature_id) as Creature
+        creature: creaturesMap.get(sighting.creature_id) as Creature,
       }));
-      
+
       setSightings(sightingsWithCreatures as SightingWithCreature[]);
     } catch (error: any) {
       console.error('Error fetching sightings:', error);
@@ -106,7 +127,7 @@ export default function SightingsScreen() {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -142,15 +163,15 @@ export default function SightingsScreen() {
         style={styles.creatureSection}
         onPress={() => navigateToCreatureDetail(item.creature_id)}
       >
-        <View 
+        <View
           style={[
-            styles.imageContainer, 
-            { backgroundColor: getBackgroundColor(item.creature.category_id) }
+            styles.imageContainer,
+            { backgroundColor: getBackgroundColor(item.creature.category_id) },
           ]}
         >
           {item.creature.image_url ? (
-            <Image 
-              source={{ uri: item.creature.image_url }} 
+            <Image
+              source={{ uri: item.creature.image_url }}
               style={styles.creatureImage}
               resizeMode="cover"
             />
@@ -160,26 +181,32 @@ export default function SightingsScreen() {
         </View>
         <View style={styles.creatureInfo}>
           <Text style={styles.creatureName}>{item.creature.name}</Text>
-          <Text style={styles.scientificName}>{item.creature.scientific_name}</Text>
+          <Text style={styles.scientificName}>
+            {item.creature.scientific_name}
+          </Text>
         </View>
       </TouchableOpacity>
-      
+
       <View style={styles.sightingDetails}>
         {item.image_url && (
           <TouchableOpacity onPress={() => setSelectedImage(item.image_url)}>
-            <Image 
-              source={{ uri: item.image_url }} 
+            <Image
+              source={{ uri: item.image_url }}
               style={styles.sightingImage}
               resizeMode="cover"
             />
           </TouchableOpacity>
         )}
-        
+
         <View style={styles.sightingInfo}>
           <View style={styles.sightingMetaContainer}>
             <View style={styles.metadataGrid}>
               <View style={styles.metadataItem}>
-                <Calendar size={16} color="#0077B6" style={styles.metadataIcon} />
+                <Calendar
+                  size={16}
+                  color="#0077B6"
+                  style={styles.metadataIcon}
+                />
                 <Text style={styles.metadataText}>
                   {formatDate(item.date)}
                   {item.time_of_day && `\n${formatTime(item.time_of_day)}`}
@@ -204,7 +231,9 @@ export default function SightingsScreen() {
               {item.creature_notes && (
                 <View style={[styles.metadataItem, styles.notesItem]}>
                   <Text style={styles.metadataLabel}>Notes</Text>
-                  <Text style={styles.metadataValue}>{item.creature_notes}</Text>
+                  <Text style={styles.metadataValue}>
+                    {item.creature_notes}
+                  </Text>
                 </View>
               )}
             </View>
@@ -232,14 +261,14 @@ export default function SightingsScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setSelectedImage(null)}
             >
               <X color="white" size={24} />
             </TouchableOpacity>
           </View>
-          <Pressable 
+          <Pressable
             style={styles.modalContent}
             onPress={() => setSelectedImage(null)}
           >
@@ -255,7 +284,10 @@ export default function SightingsScreen() {
       </Modal>
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
           <ChevronLeft color="white" size={24} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Sightings</Text>
@@ -270,8 +302,10 @@ export default function SightingsScreen() {
 
       {sightings.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>You haven't recorded any sightings yet</Text>
-          <TouchableOpacity 
+          <Text style={styles.emptyText}>
+            You haven't recorded any sightings yet
+          </Text>
+          <TouchableOpacity
             style={styles.exploreButton}
             onPress={() => router.push('/creatures')}
           >
@@ -282,7 +316,7 @@ export default function SightingsScreen() {
         <FlatList
           data={sightings}
           renderItem={renderSightingItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         />

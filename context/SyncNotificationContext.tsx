@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useAuth } from './AuthContext';
 import { useDatabase } from './DatabaseContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define the notification types
 export type NotificationType = 'success' | 'error' | 'info';
@@ -11,6 +12,7 @@ type SyncNotificationContextType = {
   showNotification: (message: string, type?: NotificationType) => void;
   hideNotification: () => void;
   isVisible: boolean;
+  lastSyncTime: Date | null;
 };
 
 // Create the context
@@ -18,6 +20,7 @@ const SyncNotificationContext = createContext<SyncNotificationContextType>({
   showNotification: () => {},
   hideNotification: () => {},
   isVisible: false,
+  lastSyncTime: null,
 });
 
 // Default auto-hide duration
@@ -31,11 +34,28 @@ export const SyncNotificationProvider: React.FC<{
   const [type, setType] = useState<NotificationType>('info');
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const { isOnline } = useAuth();
   const { isLoading, lastSynced, error } = useDatabase();
 
   // Animation value
   const translateY = new Animated.Value(-100);
+
+  // Load last sync time when component mounts
+  useEffect(() => {
+    loadLastSyncTime();
+  }, []);
+
+  const loadLastSyncTime = async () => {
+    try {
+      const storedTime = await AsyncStorage.getItem('@last_sync_time');
+      if (storedTime) {
+        setLastSyncTime(new Date(parseInt(storedTime)));
+      }
+    } catch (error) {
+      console.error('Error loading last sync time:', error);
+    }
+  };
 
   // Function to show notification
   const showNotification = (
@@ -101,8 +121,12 @@ export const SyncNotificationProvider: React.FC<{
       showNotification('Syncing with server...', 'info');
     } else if (error) {
       showNotification(`Sync error: ${error}`, 'error');
-    } else if (lastSynced && isOnline) {
-      const formattedTime = new Date(lastSynced).toLocaleTimeString();
+    } else if (lastSynced) {
+      const currentTime = new Date();
+      setLastSyncTime(currentTime);
+      // Store the timestamp in AsyncStorage
+      AsyncStorage.setItem('@last_sync_time', currentTime.getTime().toString());
+      const formattedTime = currentTime.toLocaleTimeString();
       showNotification(`Last synced at ${formattedTime}`, 'success');
     }
   }, [isLoading, error, lastSynced]);
@@ -126,6 +150,7 @@ export const SyncNotificationProvider: React.FC<{
         showNotification,
         hideNotification,
         isVisible,
+        lastSyncTime,
       }}
     >
       {children}

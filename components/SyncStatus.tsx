@@ -14,18 +14,19 @@ import { Wifi, WifiOff, RefreshCw } from 'lucide-react-native';
 const SyncStatus: React.FC = () => {
   const { isOnline } = useAuth();
   const { lastSynced, isLoading, syncNow, error } = useDatabase();
-  const { showNotification } = useSyncNotification();
+  const { showNotification, lastSyncTime } = useSyncNotification();
   const [timeAgo, setTimeAgo] = useState<string>('');
 
   useEffect(() => {
     const updateTimeAgo = () => {
-      if (!lastSynced) {
+      const syncTime = lastSynced || lastSyncTime;
+      if (!syncTime) {
         setTimeAgo('Never');
         return;
       }
 
       const now = new Date();
-      const synced = new Date(lastSynced);
+      const synced = new Date(syncTime);
       const diffMs = now.getTime() - synced.getTime();
       const diffSec = Math.floor(diffMs / 1000);
       const diffMin = Math.floor(diffSec / 60);
@@ -47,7 +48,7 @@ const SyncStatus: React.FC = () => {
     const interval = setInterval(updateTimeAgo, 60000); // Update every minute
 
     return () => clearInterval(interval);
-  }, [lastSynced]);
+  }, [lastSynced, lastSyncTime]);
 
   const handleManualSync = async () => {
     if (!isOnline) {
