@@ -8,7 +8,10 @@ export class Creature extends Model {
   @field('scientific_name') scientificName?: string;
   @field('description') description?: string;
   @field('image_url') imageUrl?: string;
+  @field('category_id') categoryId!: string;
   @field('rarity') rarity?: string;
+  @field('class') class?: string;
+  @field('points') points?: number;
   @field('is_favorite') isFavorite?: boolean;
 
   @readonly @date('updated_at') updatedAt?: Date;

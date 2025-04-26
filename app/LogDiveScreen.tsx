@@ -12,17 +12,25 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
+  FlatList,
+  SafeAreaView,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
-import { ChevronLeft, Plus, Camera, X } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  Plus,
+  Camera,
+  X,
+  MapPin,
+  Search,
+} from 'lucide-react-native';
 import { useDiveLog } from '../context/DiveLogContext';
 import { Creature } from '@/lib/types';
 import { Picker } from '@react-native-picker/picker';
-import CustomMap from '../components/CustomMap';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DIVE_TYPES = ['Shore', 'Boat', 'Wreck', 'Drift', 'Cave', 'Night', 'Deep'];
 
@@ -46,44 +54,144 @@ export default function LogDiveScreen() {
   const [error, setError] = useState<string | null>(null);
   const [diveSites, setDiveSites] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDiveSiteId, setSelectedDiveSiteId] = useState<string | null>(
-    null
-  );
-  const [mapRegion, setMapRegion] = useState<any>(null);
   const [showDiveTypePicker, setShowDiveTypePicker] = useState(false);
   const [creatureSightings, setCreatureSightings] = useState<
     CreatureSighting[]
   >([]);
-  const [diveSite, setDiveSite] = useState('');
-  const [maxDepth, setMaxDepth] = useState('');
-  const [showImagePicker, setShowImagePicker] = useState(false);
-  const [selectedCreatureForImage, setSelectedCreatureForImage] =
-    useState<CreatureSighting | null>(null);
   const [creatureImages, setCreatureImages] = useState<Record<string, string>>(
     {}
   );
 
+  // Dive site state
+  const [showDiveSiteModal, setShowDiveSiteModal] = useState(false);
+  const [filteredDiveSites, setFilteredDiveSites] = useState<any[]>([]);
+  const [selectedDiveSite, setSelectedDiveSite] = useState<any>(null);
+
+  // For custom dive site
+  const [isCustomDiveSite, setIsCustomDiveSite] = useState(false);
+  const [customDiveSiteName, setCustomDiveSiteName] = useState('');
+  const [customDiveSiteLocation, setCustomDiveSiteLocation] = useState('');
+
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-
-      const location = await Location.getCurrentPositionAsync({});
-      setMapRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.1, // Adjust to zoom into a smaller area
-        longitudeDelta: 0.1,
-      });
-    })();
-
-    supabase
-      .from('dive_sites')
-      .select('*')
-      .then(({ data }) => {
-        if (data) setDiveSites(data);
-      });
+    fetchDiveSites();
   }, []);
+
+  const fetchDiveSites = async () => {
+    try {
+      // Try to get dive sites from Supabase first
+      const { data: supabaseDiveSites, error } = await supabase
+        .from('dive_sites')
+        .select('*');
+
+      if (supabaseDiveSites && supabaseDiveSites.length > 0 && !error) {
+        setDiveSites(supabaseDiveSites);
+        setFilteredDiveSites(supabaseDiveSites);
+      } else {
+        // Fallback to AsyncStorage
+        const storedDiveSites = await AsyncStorage.getItem('@dive_sites');
+        if (storedDiveSites) {
+          const parsedSites = JSON.parse(storedDiveSites);
+          setDiveSites(parsedSites);
+          setFilteredDiveSites(parsedSites);
+        } else {
+          // If no stored sites, create some default ones
+          createDefaultDiveSites();
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching dive sites:', error);
+      createDefaultDiveSites();
+    }
+  };
+
+  const createDefaultDiveSites = () => {
+    const defaultDiveSites = [
+      {
+        id: '1',
+        name: 'Great Blue Hole',
+        location: 'Lighthouse Reef Atoll, Belize',
+        type: 'blue hole',
+      },
+      {
+        id: '2',
+        name: 'Barracuda Point',
+        location: 'Sipadan Island, Malaysia',
+        type: 'wall',
+      },
+      {
+        id: '3',
+        name: 'SS Thistlegorm',
+        location: 'Red Sea, Egypt',
+        type: 'wreck',
+      },
+      {
+        id: '4',
+        name: 'Blue Corner Wall',
+        location: 'Palau, Micronesia',
+        type: 'wall',
+      },
+      {
+        id: '5',
+        name: 'Manta Ray Night Dive',
+        location: 'Kailua Kona, Hawaii',
+        type: 'night',
+      },
+    ];
+    setDiveSites(defaultDiveSites);
+    setFilteredDiveSites(defaultDiveSites);
+    AsyncStorage.setItem('@dive_sites', JSON.stringify(defaultDiveSites));
+  };
+
+  const handleSearch = (text: string) => {
+    setSearchTerm(text);
+    if (text) {
+      const filtered = diveSites.filter(
+        (site) =>
+          site.name.toLowerCase().includes(text.toLowerCase()) ||
+          site.location.toLowerCase().includes(text.toLowerCase())
+      );
+      setFilteredDiveSites(filtered);
+    } else {
+      setFilteredDiveSites(diveSites);
+    }
+  };
+
+  const selectDiveSite = (site: any) => {
+    setSelectedDiveSite(site);
+    setShowDiveSiteModal(false);
+    setIsCustomDiveSite(false);
+  };
+
+  const addCustomDiveSite = () => {
+    if (!customDiveSiteName || !customDiveSiteLocation) {
+      Alert.alert(
+        'Please enter both name and location for the custom dive site'
+      );
+      return;
+    }
+
+    const newSite = {
+      id: `custom-${Date.now()}`,
+      name: customDiveSiteName,
+      location: customDiveSiteLocation,
+      type: 'custom',
+    };
+
+    // Add to current list and select it
+    const updatedSites = [...diveSites, newSite];
+    setDiveSites(updatedSites);
+    setFilteredDiveSites(updatedSites);
+    setSelectedDiveSite(newSite);
+
+    // Store for future use
+    AsyncStorage.setItem('@dive_sites', JSON.stringify(updatedSites));
+
+    // Clear form and close modal
+    setCustomDiveSiteName('');
+    setCustomDiveSiteLocation('');
+    setIsCustomDiveSite(false);
+    setShowDiveSiteModal(false);
+  };
 
   const fetchCreatureImage = async (creatureId: string) => {
     const { data, error } = await supabase
@@ -120,10 +228,6 @@ export default function LogDiveScreen() {
     }
   }, [initialCreatures]);
 
-  const filteredDiveSites = diveSites.filter((site) =>
-    site.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const pickImage = async (creatureId: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return;
@@ -158,7 +262,7 @@ export default function LogDiveScreen() {
 
   const saveDive = async () => {
     if (!user) return Alert.alert('Login required');
-    if (!selectedDiveSiteId) return setError('Please select a dive site');
+    if (!selectedDiveSite) return setError('Please select a dive site');
     if (!date) return setError('Please enter a date');
     if (creatureSightings.length === 0)
       return setError('Please select at least one creature');
@@ -170,23 +274,19 @@ export default function LogDiveScreen() {
           ? `${timeOfDay}:00`
           : timeOfDay || '12:00:00';
 
-      // Get the selected dive site for location field
-      const selectedSite = diveSites.find(
-        (site) => site.id === selectedDiveSiteId
-      );
-
       let successes = 0;
       let lastError = null;
 
       // For each creature, create a sighting entry
-      // Use different strategies for different database schema versions
       for (const creature of creatureSightings) {
         try {
           // Try with the new schema first
           const newSchemaData = {
             user_id: user.id,
             creature_id: creature.id,
-            dive_site_id: selectedDiveSiteId,
+            dive_site_id: selectedDiveSite.id,
+            dive_site_name: selectedDiveSite.name,
+            dive_site_location: selectedDiveSite.location,
             dive_type: diveType || null,
             time_of_day: formattedTime,
             depth: depth ? Number(depth) : null,
@@ -194,8 +294,8 @@ export default function LogDiveScreen() {
             dive_notes: globalNotes || null,
             creature_notes: creature.notes || null,
             image_url: creature.imageUri || null,
-            // Still provide location for compatibility with old schema
-            location: selectedSite?.name || 'Unknown location',
+            // Provide location for compatibility
+            location: `${selectedDiveSite.name}, ${selectedDiveSite.location}`,
           };
 
           const { error } = await supabase
@@ -219,7 +319,7 @@ export default function LogDiveScreen() {
               const oldSchemaData = {
                 user_id: user.id,
                 creature_id: creature.id,
-                location: selectedSite?.name || 'Unknown location',
+                location: `${selectedDiveSite.name}, ${selectedDiveSite.location}`,
                 date,
                 notes: combinedNotes,
                 image_url: creature.imageUri || null,
@@ -244,7 +344,7 @@ export default function LogDiveScreen() {
               const locationSchemaData = {
                 user_id: user.id,
                 creature_id: creature.id,
-                location: selectedSite?.name || 'Unknown location',
+                location: `${selectedDiveSite.name}, ${selectedDiveSite.location}`,
                 date,
                 notes: globalNotes || null,
                 image_url: creature.imageUri || null,
@@ -328,253 +428,334 @@ export default function LogDiveScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View
-        style={[styles.header, { marginTop: Platform.OS === 'ios' ? 60 : 30 }]}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <ChevronLeft color="white" size={24} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Log Dive</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{ paddingBottom: 200 }}
         >
-          <ChevronLeft color="white" size={24} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Log Dive</Text>
-        <View style={styles.placeholder} />
-      </View>
+          {error && <Text style={styles.error}>{error}</Text>}
 
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={{ paddingBottom: 200 }}
-      >
-        {error && <Text style={styles.error}>{error}</Text>}
+          {/* Dive Site Selector */}
+          <Text style={styles.label}>Dive Site</Text>
+          <TouchableOpacity
+            style={styles.siteSelector}
+            onPress={() => setShowDiveSiteModal(true)}
+          >
+            <MapPin size={20} color="#0077B6" style={styles.selectorIcon} />
+            <Text style={styles.selectorText}>
+              {selectedDiveSite ? selectedDiveSite.name : 'Select a dive site'}
+            </Text>
+          </TouchableOpacity>
 
-        <TextInput
-          placeholder="Search dive site..."
-          value={searchTerm}
-          onChangeText={setSearchTerm}
-          style={styles.input}
-          placeholderTextColor="#666"
-        />
+          <Text style={styles.label}>Dive Type</Text>
+          <TouchableOpacity
+            style={styles.pickerContainer}
+            onPress={() => setShowDiveTypePicker(true)}
+          >
+            <Text style={styles.pickerText}>
+              {diveType || 'Select dive type'}
+            </Text>
+            <View style={styles.pickerArrow}>
+              <ChevronLeft
+                size={20}
+                color="white"
+                style={{ transform: [{ rotate: '90deg' }] }}
+              />
+            </View>
+          </TouchableOpacity>
 
-        <Text style={styles.label}>Dive Site</Text>
-        <Text style={styles.sublabel}>
-          Tap a marker on the map to select a dive site
-        </Text>
-
-        {mapRegion ? (
-          <CustomMap
-            diveSites={filteredDiveSites}
-            selectedDiveSiteId={selectedDiveSiteId}
-            onDiveSiteSelect={(id) => {
-              setSelectedDiveSiteId(id);
-              // Clear any previous error about dive site selection
-              if (error === 'Please select a dive site') {
-                setError(null);
-              }
-            }}
-            initialRegion={mapRegion}
+          <Text style={styles.label}>Time of Day</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="12:00"
+            value={timeOfDay}
+            onChangeText={setTimeOfDay}
+            placeholderTextColor="#666"
           />
-        ) : (
-          <View style={styles.mapLoadingContainer}>
-            <ActivityIndicator size="large" color="#0077B6" />
-            <Text style={styles.mapLoadingText}>Loading map...</Text>
-          </View>
-        )}
 
-        {selectedDiveSiteId ? (
-          <View style={styles.selectedSiteContainer}>
-            <Text style={styles.selectedSiteText}>
-              Selected:{' '}
-              {diveSites.find((site) => site.id === selectedDiveSiteId)?.name}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.selectedSiteContainer}>
-            <Text style={[styles.selectedSiteText, styles.unselectedText]}>
-              No dive site selected
-            </Text>
-          </View>
-        )}
+          <Text style={styles.label}>Depth (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Depth in meters"
+            keyboardType="numeric"
+            value={depth}
+            onChangeText={setDepth}
+            placeholderTextColor="#666"
+          />
 
-        <Text style={styles.label}>Dive Type</Text>
-        <TouchableOpacity
-          style={styles.pickerContainer}
-          onPress={() => setShowDiveTypePicker(true)}
-        >
-          <Text style={styles.pickerText}>
-            {diveType || 'Select dive type'}
-          </Text>
-          <View style={styles.pickerArrow}>
-            <ChevronLeft
-              size={20}
-              color="white"
-              style={{ transform: [{ rotate: '90deg' }] }}
-            />
-          </View>
-        </TouchableOpacity>
+          <Text style={styles.label}>Date</Text>
+          <TextInput
+            style={styles.input}
+            value={date}
+            onChangeText={setDate}
+            placeholderTextColor="#666"
+          />
 
-        <Text style={styles.label}>Time of Day</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="12:00"
-          value={timeOfDay}
-          onChangeText={setTimeOfDay}
-          placeholderTextColor="#666"
-        />
+          <Text style={styles.label}>Dive Notes (optional)</Text>
+          <TextInput
+            style={[styles.input, { minHeight: 80 }]}
+            multiline
+            placeholder="Notes about this dive..."
+            value={globalNotes}
+            onChangeText={setGlobalNotes}
+            placeholderTextColor="#666"
+          />
 
-        <Text style={styles.label}>Depth (optional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Depth in meters"
-          keyboardType="numeric"
-          value={depth}
-          onChangeText={setDepth}
-          placeholderTextColor="#666"
-        />
-
-        <Text style={styles.label}>Date</Text>
-        <TextInput
-          style={styles.input}
-          value={date}
-          onChangeText={setDate}
-          placeholderTextColor="#666"
-        />
-
-        <Text style={styles.label}>Dive Notes (optional)</Text>
-        <TextInput
-          style={[styles.input, { minHeight: 80 }]}
-          multiline
-          placeholder="Notes about this dive..."
-          value={globalNotes}
-          onChangeText={setGlobalNotes}
-          placeholderTextColor="#666"
-        />
-
-        <Text style={styles.label}>Creatures</Text>
-        {creatureSightings.map((creature) => (
-          <View key={creature.id} style={styles.creatureCard}>
-            <View style={styles.creatureHeader}>
-              <View style={styles.creatureInfo}>
-                <View style={styles.creatureNameRow}>
-                  <View style={styles.creatureAvatar}>
-                    <Image
-                      source={{
-                        uri:
-                          creatureImages[creature.id] ||
-                          'https://via.placeholder.com/50',
-                      }}
-                      style={styles.creatureAvatarImage}
-                      resizeMode="cover"
-                    />
-                  </View>
-                  <View style={styles.nameContainer}>
-                    <Text style={styles.creatureName}>{creature.name}</Text>
-                    <Text style={styles.scientificName}>
-                      {creature.scientific_name}
-                    </Text>
+          <Text style={styles.label}>Creatures</Text>
+          {creatureSightings.map((creature) => (
+            <View key={creature.id} style={styles.creatureCard}>
+              <View style={styles.creatureHeader}>
+                <View style={styles.creatureInfo}>
+                  <View style={styles.creatureNameRow}>
+                    <View style={styles.creatureAvatar}>
+                      <Image
+                        source={{
+                          uri:
+                            creatureImages[creature.id] ||
+                            'https://via.placeholder.com/50',
+                        }}
+                        style={styles.creatureAvatarImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                    <View style={styles.nameContainer}>
+                      <Text style={styles.creatureName}>{creature.name}</Text>
+                      <Text style={styles.scientificName}>
+                        {creature.scientific_name}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-              <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => removeCreature(creature.id)}
-              >
-                <X size={20} color="#FF4444" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.imageSection}>
-              {creature.imageUri ? (
-                <TouchableOpacity onPress={() => pickImage(creature.id)}>
-                  <Image
-                    source={{ uri: creature.imageUri }}
-                    style={styles.creatureImage}
-                  />
-                </TouchableOpacity>
-              ) : (
                 <TouchableOpacity
-                  style={styles.addImageButton}
-                  onPress={() => pickImage(creature.id)}
+                  style={styles.removeButton}
+                  onPress={() => removeCreature(creature.id)}
                 >
-                  <Camera size={24} color="#0077B6" />
-                  <Text style={styles.addImageText}>Add Photo</Text>
+                  <X size={20} color="#FF4444" />
                 </TouchableOpacity>
+              </View>
+
+              <View style={styles.imageSection}>
+                {creature.imageUri ? (
+                  <TouchableOpacity onPress={() => pickImage(creature.id)}>
+                    <Image
+                      source={{ uri: creature.imageUri }}
+                      style={styles.creatureImage}
+                    />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.addImageButton}
+                    onPress={() => pickImage(creature.id)}
+                  >
+                    <Camera size={24} color="#0077B6" />
+                    <Text style={styles.addImageText}>Add Photo</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <TextInput
+                style={[styles.input, styles.creatureNotes]}
+                multiline
+                placeholder={`Notes about this ${creature.name.toLowerCase()}...`}
+                value={creature.notes}
+                onChangeText={(text) => updateCreatureNotes(creature.id, text)}
+                placeholderTextColor="#666"
+              />
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push('/Select-Creatures')}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              <Plus size={20} color="#0077B6" />
+              <Text style={styles.addButtonText}>Add Creatures</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveButton, loading && styles.disabledButton]}
+            onPress={saveDive}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Dive Log</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* Dive Type Picker Modal */}
+        <Modal
+          visible={showDiveTypePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowDiveTypePicker(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Dive Type</Text>
+                <TouchableOpacity onPress={() => setShowDiveTypePicker(false)}>
+                  <Text style={styles.modalDoneButton}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <Picker
+                selectedValue={diveType}
+                onValueChange={(itemValue) => setDiveType(itemValue)}
+                style={{ color: 'white' }}
+                dropdownIconColor="white"
+              >
+                <Picker.Item label="Select dive type" value="" color="white" />
+                {DIVE_TYPES.map((type) => (
+                  <Picker.Item
+                    key={type}
+                    label={type}
+                    value={type}
+                    color="white"
+                  />
+                ))}
+              </Picker>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Dive Site Selection Modal */}
+        <Modal
+          visible={showDiveSiteModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowDiveSiteModal(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.siteModalContent}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Select Dive Site</Text>
+                <TouchableOpacity
+                  onPress={() => setShowDiveSiteModal(false)}
+                  style={styles.closeButton}
+                >
+                  <X size={24} color="#0077B6" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.searchContainer}>
+                <Search size={20} color="#666" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search dive sites..."
+                  value={searchTerm}
+                  onChangeText={handleSearch}
+                  placeholderTextColor="#666"
+                />
+                {searchTerm.length > 0 && (
+                  <TouchableOpacity onPress={() => handleSearch('')}>
+                    <X size={18} color="#666" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {isCustomDiveSite ? (
+                <View style={styles.customSiteForm}>
+                  <Text style={styles.customFormTitle}>
+                    Add Custom Dive Site
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Dive Site Name"
+                    value={customDiveSiteName}
+                    onChangeText={setCustomDiveSiteName}
+                    placeholderTextColor="#666"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Location (e.g. Bahamas, Caribbean)"
+                    value={customDiveSiteLocation}
+                    onChangeText={setCustomDiveSiteLocation}
+                    placeholderTextColor="#666"
+                  />
+                  <View style={styles.customFormButtons}>
+                    <TouchableOpacity
+                      style={[styles.customFormButton, styles.cancelButton]}
+                      onPress={() => setIsCustomDiveSite(false)}
+                    >
+                      <Text style={styles.customButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.customFormButton, styles.addButton]}
+                      onPress={addCustomDiveSite}
+                    >
+                      <Text style={styles.customButtonText}>Add Site</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <FlatList
+                    data={filteredDiveSites}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.siteItem}
+                        onPress={() => selectDiveSite(item)}
+                      >
+                        <View style={styles.siteInfo}>
+                          <Text style={styles.siteName}>{item.name}</Text>
+                          <Text style={styles.siteLocation}>
+                            {item.location}
+                          </Text>
+                          {item.type && (
+                            <View style={styles.siteTypeTag}>
+                              <Text style={styles.siteTypeText}>
+                                {item.type}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={
+                      <Text style={styles.noResultsText}>
+                        No dive sites found
+                      </Text>
+                    }
+                    style={styles.siteList}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.addCustomButton}
+                    onPress={() => setIsCustomDiveSite(true)}
+                  >
+                    <Text style={styles.addCustomText}>
+                      Add Custom Dive Site
+                    </Text>
+                  </TouchableOpacity>
+                </>
               )}
             </View>
-
-            <TextInput
-              style={[styles.input, styles.creatureNotes]}
-              multiline
-              placeholder={`Notes about this ${creature.name.toLowerCase()}...`}
-              value={creature.notes}
-              onChangeText={(text) => updateCreatureNotes(creature.id, text)}
-              placeholderTextColor="#666"
-            />
           </View>
-        ))}
-
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push('/Select-Creatures')}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-            }}
-          >
-            <Plus size={20} color="#0077B6" />
-            <Text style={styles.addButtonText}>Add Creatures</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.saveButton, loading && styles.disabledButton]}
-          onPress={saveDive}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Dive Log</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-
-      <Modal
-        visible={showDiveTypePicker}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowDiveTypePicker(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Dive Type</Text>
-              <TouchableOpacity onPress={() => setShowDiveTypePicker(false)}>
-                <Text style={styles.modalDoneButton}>Done</Text>
-              </TouchableOpacity>
-            </View>
-            <Picker
-              selectedValue={diveType}
-              onValueChange={(itemValue) => setDiveType(itemValue)}
-              style={{ color: 'white' }}
-              dropdownIconColor="white"
-            >
-              <Picker.Item label="Select dive type" value="" color="white" />
-              {DIVE_TYPES.map((type) => (
-                <Picker.Item
-                  key={type}
-                  label={type}
-                  value={type}
-                  color="white"
-                />
-              ))}
-            </Picker>
-          </View>
-        </View>
-      </Modal>
+        </Modal>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
@@ -584,23 +765,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#121212',
   },
+  safeArea: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
   },
   backButton: {
-    padding: 5,
+    padding: 8,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     color: 'white',
     fontWeight: 'bold',
   },
   placeholder: {
-    width: 30,
+    width: 40,
   },
   content: {
     paddingHorizontal: 20,
@@ -759,11 +945,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0077B6',
     padding: 15,
     alignItems: 'center',
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
     borderRadius: 8,
+    marginBottom: 20,
   },
   disabledButton: {
     backgroundColor: '#3A3A3A',
@@ -773,30 +956,135 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  mapLoadingContainer: {
-    height: 400,
-    backgroundColor: '#1E1E1E',
-    borderRadius: 10,
-    justifyContent: 'center',
+  siteSelector: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
-  },
-  mapLoadingText: {
-    color: '#AAAAAA',
-    marginTop: 10,
-  },
-  selectedSiteContainer: {
-    backgroundColor: '#1E1E1E',
-    padding: 10,
+    backgroundColor: '#2A2A2A',
     borderRadius: 8,
+    padding: 15,
     marginBottom: 15,
   },
-  selectedSiteText: {
-    color: '#0077B6',
+  selectorIcon: {
+    marginRight: 10,
+  },
+  selectorText: {
+    color: '#CCC',
+    flex: 1,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 15,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    color: 'white',
+    fontSize: 16,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  siteList: {
+    flex: 1,
+    marginBottom: 15,
+  },
+  siteItem: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 10,
+  },
+  siteInfo: {
+    flex: 1,
+  },
+  siteName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 5,
+  },
+  siteLocation: {
+    fontSize: 14,
+    color: '#AAAAAA',
+    marginBottom: 8,
+  },
+  siteTypeTag: {
+    backgroundColor: '#0077B6',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  siteTypeText: {
+    color: 'white',
+    fontSize: 12,
+  },
+  noResultsText: {
+    color: '#AAAAAA',
     textAlign: 'center',
+    padding: 20,
+  },
+  addCustomButton: {
+    backgroundColor: '#0077B6',
+    borderRadius: 8,
+    padding: 15,
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  addCustomText: {
+    color: 'white',
     fontWeight: 'bold',
   },
-  unselectedText: {
-    color: '#666666',
+  customSiteForm: {
+    flex: 1,
+  },
+  customFormTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 15,
+  },
+  customFormButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  customFormButton: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#444444',
+    marginRight: 10,
+  },
+  customButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  siteModalContent: {
+    backgroundColor: '#1E1E1E',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '85%',
   },
 });

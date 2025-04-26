@@ -1,32 +1,82 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Alert, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Image,
+  Alert,
+  RefreshControl,
+} from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { Creature, Sighting } from '../../../lib/types';
-import { ChevronLeft, Heart, Plus, Camera, MapPin, Calendar, CreditCard as Edit } from 'lucide-react-native';
+import {
+  Creature as CreatureType,
+  Sighting as SightingType,
+} from '../../../lib/types';
+import {
+  ChevronLeft,
+  Heart,
+  Plus,
+  Camera,
+  MapPin,
+  Calendar,
+  CreditCard as Edit,
+} from 'lucide-react-native';
 import { useAuth } from '../../../context/AuthContext';
+import { database } from '../../../database';
+import { synchronize } from '../../../database/sync';
+import { Q } from '@nozbe/watermelondb';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Creature } from '../../../database/models/Creature';
+import { Sighting } from '../../../database/models/Sighting';
 
 export default function CreatureDetailScreen() {
   const { id, category } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
-  const [creature, setCreature] = useState<Creature | null>(null);
-  const [sightings, setSightings] = useState<Sighting[]>([]);
+  const [creature, setCreature] = useState<CreatureType | null>(null);
+  const [sightings, setSightings] = useState<SightingType[]>([]);
   const [loading, setLoading] = useState(true);
   const [sightingsLoading, setSightingsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('about');
   const [isFavorite, setIsFavorite] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncTime, setSyncTime] = useState<string | null>(null);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.all([
-        fetchCreature(),
-        user && fetchSightings(),
-        user && checkIfFavorite()
+        fetchCreatureFromDatabase(),
+        user && fetchSightingsFromDatabase(),
+        user && checkIfFavorite(),
       ]);
+
+      // Try to sync with server if online
+      if (user) {
+        try {
+          const result = await synchronize(user.id);
+          console.log('Sync result on refresh:', result);
+          if (result.success) {
+            // Reload data after sync
+            await Promise.all([
+              fetchCreatureFromDatabase(),
+              fetchSightingsFromDatabase(),
+              checkIfFavorite(),
+            ]);
+
+            // Update sync time
+            const currentTime = Date.now();
+            setSyncTime(new Date(currentTime).toLocaleString());
+          }
+        } catch (syncError) {
+          console.error('Error syncing on refresh:', syncError);
+        }
+      }
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
@@ -35,18 +85,92 @@ export default function CreatureDetailScreen() {
   }, [user, id]);
 
   useEffect(() => {
-    fetchCreature();
+    // Load last sync time
+    AsyncStorage.getItem('@last_sync_time').then((time) => {
+      if (time) {
+        const syncDate = new Date(parseInt(time));
+        setSyncTime(syncDate.toLocaleString());
+      }
+    });
+
+    fetchCreatureFromDatabase();
     if (user) {
-      fetchSightings();
+      fetchSightingsFromDatabase();
       checkIfFavorite();
     }
   }, [id, user]);
 
-  const fetchCreature = async () => {
+  const fetchCreatureFromDatabase = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      if (!id) {
+        throw new Error('Creature ID is required');
+      }
+
+      // Try to get creature from WatermelonDB
+      const creaturesCollection = database.get<Creature>('creatures');
+      const dbCreatures = await creaturesCollection
+        .query(Q.where('id', String(id)))
+        .fetch();
+
+      if (dbCreatures.length > 0) {
+        const creature = dbCreatures[0];
+        const formattedCreature = {
+          id: creature.id,
+          name: (creature as any).name,
+          scientific_name: (creature as any).scientificName,
+          description: (creature as any).description,
+          image_url: (creature as any).imageUrl,
+          category_id: (creature as any).categoryId,
+          rarity: (creature as any).rarity,
+          class: (creature as any).class,
+          points: (creature as any).points || 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          // Add default values for other fields that might be needed but not in our model
+          length: 'Unknown',
+          weight: 'Unknown',
+          diet: 'Unknown',
+          lifespan: 'Unknown',
+          habitat: 'Unknown',
+          conservation_status: 'Unknown',
+        };
+        setCreature(formattedCreature as unknown as CreatureType);
+      } else {
+        // Fallback to AsyncStorage
+        const storedCreatures = await AsyncStorage.getItem('@creatures');
+        if (storedCreatures) {
+          const creatures = JSON.parse(storedCreatures) as CreatureType[];
+          const foundCreature = creatures.find((c) => c.id === String(id));
+          if (foundCreature) {
+            setCreature(foundCreature);
+          } else {
+            // If not found in AsyncStorage, try Supabase
+            await fetchCreatureFromSupabase();
+          }
+        } else {
+          // If not in AsyncStorage, try Supabase
+          await fetchCreatureFromSupabase();
+        }
+      }
+    } catch (error: any) {
+      console.error('Error fetching creature from database:', error);
+
+      // Fallback to Supabase
+      try {
+        await fetchCreatureFromSupabase();
+      } catch (supabaseError) {
+        setError((error as Error).message || 'Failed to load creature');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCreatureFromSupabase = async () => {
+    try {
       if (!id) {
         throw new Error('Creature ID is required');
       }
@@ -61,19 +185,77 @@ export default function CreatureDetailScreen() {
         throw new Error(error.message);
       }
 
-      setCreature(data as Creature);
+      setCreature(data as CreatureType);
+
+      // Store in AsyncStorage for offline use
+      const storedCreatures = await AsyncStorage.getItem('@creatures');
+      if (storedCreatures) {
+        let creatures = JSON.parse(storedCreatures) as CreatureType[];
+        // Update or add the creature
+        const index = creatures.findIndex((c) => c.id === String(id));
+        if (index >= 0) {
+          creatures[index] = data as CreatureType;
+        } else {
+          creatures.push(data as CreatureType);
+        }
+        await AsyncStorage.setItem('@creatures', JSON.stringify(creatures));
+      } else {
+        await AsyncStorage.setItem('@creatures', JSON.stringify([data]));
+      }
     } catch (error: any) {
-      console.error('Error fetching creature:', error);
+      console.error('Error fetching creature from Supabase:', error);
       setError(error.message || 'Failed to load creature');
-    } finally {
-      setLoading(false);
+      throw error;
     }
   };
 
-  const fetchSightings = async () => {
+  const fetchSightingsFromDatabase = async () => {
     try {
       setSightingsLoading(true);
-      
+
+      if (!id || !user) return;
+
+      // Try to get sightings from WatermelonDB
+      const sightingsCollection = database.get<Sighting>('sightings');
+      const dbSightings = await sightingsCollection
+        .query(Q.where('user_id', user.id), Q.where('creature_id', String(id)))
+        .fetch();
+
+      if (dbSightings.length > 0) {
+        const formattedSightings = dbSightings.map((s) => ({
+          id: s.id,
+          user_id: (s as any).userId,
+          creature_id: (s as any).creatureId,
+          dive_id: (s as any).diveId,
+          date: new Date((s as any).sightedAt).toISOString(),
+          location: (s as any).location || '',
+          notes: (s as any).notes || '',
+          image_url: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+
+        setSightings(formattedSightings as SightingType[]);
+      } else {
+        // Fallback to Supabase
+        await fetchSightingsFromSupabase();
+      }
+    } catch (error) {
+      console.error('Error fetching sightings from database:', error);
+
+      // Fallback to Supabase
+      try {
+        await fetchSightingsFromSupabase();
+      } catch (supabaseError) {
+        console.error('Error fetching sightings from Supabase:', supabaseError);
+      }
+    } finally {
+      setSightingsLoading(false);
+    }
+  };
+
+  const fetchSightingsFromSupabase = async () => {
+    try {
       if (!id || !user) return;
 
       const { data, error } = await supabase
@@ -84,22 +266,89 @@ export default function CreatureDetailScreen() {
         .order('date', { ascending: false });
 
       if (error) {
-        console.error('Error fetching sightings:', error);
+        console.error('Error fetching sightings from Supabase:', error);
         return;
       }
 
-      console.log('Fetched sightings:', data);
-      setSightings(data as Sighting[]);
+      console.log('Fetched sightings from Supabase:', data);
+      setSightings(data as SightingType[]);
+
+      // Store sightings in local database
+      storeSightingsInDatabase(data as SightingType[]);
     } catch (error) {
-      console.error('Error in fetchSightings:', error);
-    } finally {
-      setSightingsLoading(false);
+      console.error('Error in fetchSightingsFromSupabase:', error);
+    }
+  };
+
+  const storeSightingsInDatabase = async (sightings: SightingType[]) => {
+    if (!user || sightings.length === 0) return;
+
+    try {
+      const sightingsCollection = database.get<Sighting>('sightings');
+
+      // Get existing sightings
+      const existingSightings = await sightingsCollection
+        .query(Q.where('user_id', user.id), Q.where('creature_id', String(id)))
+        .fetch();
+
+      const existingIds = new Set(existingSightings.map((s) => s.id));
+
+      await database.write(async () => {
+        for (const sighting of sightings) {
+          try {
+            if (!existingIds.has(sighting.id)) {
+              await sightingsCollection.create((record) => {
+                record._raw.id = sighting.id;
+
+                const typedRecord = record as any;
+                typedRecord.userId = sighting.user_id;
+                typedRecord.creatureId = sighting.creature_id;
+                typedRecord.sightedAt = new Date(sighting.date).getTime();
+                if (sighting.location) typedRecord.location = sighting.location;
+                if (sighting.notes) typedRecord.notes = sighting.notes;
+                if ((sighting as any).dive_id) {
+                  if ('diveId' in typedRecord) {
+                    typedRecord.diveId = (sighting as any).dive_id;
+                  }
+                }
+                typedRecord.isSynced = true;
+              });
+              console.log(`Created sighting: ${sighting.id}`);
+            } else {
+              // Update existing sighting
+              const existingSighting = existingSightings.find(
+                (s) => s.id === sighting.id
+              );
+              if (existingSighting) {
+                await existingSighting.update((s) => {
+                  const typedRecord = s as any;
+                  typedRecord.sightedAt = new Date(sighting.date).getTime();
+                  if (sighting.location)
+                    typedRecord.location = sighting.location;
+                  if (sighting.notes) typedRecord.notes = sighting.notes;
+                  if ((sighting as any).dive_id) {
+                    if ('diveId' in typedRecord) {
+                      typedRecord.diveId = (sighting as any).dive_id;
+                    }
+                  }
+                  typedRecord.isSynced = true;
+                });
+                console.log(`Updated sighting: ${sighting.id}`);
+              }
+            }
+          } catch (error) {
+            console.error(`Error storing sighting ${sighting.id}:`, error);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error storing sightings in database:', error);
     }
   };
 
   const checkIfFavorite = async () => {
     if (!user || !id) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('wishlists')
@@ -107,15 +356,55 @@ export default function CreatureDetailScreen() {
         .eq('user_id', user.id)
         .eq('creature_id', id)
         .single();
-        
+
       if (error && error.code !== 'PGRST116') {
         console.error('Error checking favorite status:', error);
         return;
       }
-      
+
       setIsFavorite(!!data);
+
+      // Store favorite status in AsyncStorage
+      await storeFavoriteStatus(!!data);
     } catch (error) {
       console.error('Error in checkIfFavorite:', error);
+
+      // Try to get from AsyncStorage
+      try {
+        const favoriteStatus = await getFavoriteStatus();
+        if (favoriteStatus !== null) {
+          setIsFavorite(favoriteStatus);
+        }
+      } catch (storageError) {
+        console.error(
+          'Error getting favorite status from storage:',
+          storageError
+        );
+      }
+    }
+  };
+
+  const storeFavoriteStatus = async (isFavorite: boolean) => {
+    if (!user || !id) return;
+
+    try {
+      const key = `@favorite_${user.id}_${id}`;
+      await AsyncStorage.setItem(key, isFavorite ? 'true' : 'false');
+    } catch (error) {
+      console.error('Error storing favorite status:', error);
+    }
+  };
+
+  const getFavoriteStatus = async (): Promise<boolean | null> => {
+    if (!user || !id) return null;
+
+    try {
+      const key = `@favorite_${user.id}_${id}`;
+      const value = await AsyncStorage.getItem(key);
+      return value === 'true';
+    } catch (error) {
+      console.error('Error getting favorite status:', error);
+      return null;
     }
   };
 
@@ -124,38 +413,44 @@ export default function CreatureDetailScreen() {
       Alert.alert('Sign In Required', 'Please sign in to add to favorites.');
       return;
     }
-    
+
     try {
-      if (isFavorite) {
+      // Toggle favorite status locally first for immediate feedback
+      const newStatus = !isFavorite;
+      setIsFavorite(newStatus);
+      await storeFavoriteStatus(newStatus);
+
+      // Then try to update on server
+      if (newStatus) {
+        // Add to favorites
+        const { error } = await supabase
+          .from('wishlists')
+          .insert([{ user_id: user.id, creature_id: creature.id }]);
+
+        if (error) throw error;
+      } else {
         // Remove from favorites
         const { error } = await supabase
           .from('wishlists')
           .delete()
           .eq('user_id', user.id)
           .eq('creature_id', creature.id);
-          
-        if (error) throw error;
-      } else {
-        // Add to favorites
-        const { error } = await supabase
-          .from('wishlists')
-          .insert([{ user_id: user.id, creature_id: creature.id }]);
-          
+
         if (error) throw error;
       }
-      
-      // Toggle state
-      setIsFavorite(!isFavorite);
     } catch (error) {
       console.error('Error toggling favorite:', error);
-      Alert.alert('Error', 'Failed to update favorites. Please try again.');
+      Alert.alert(
+        'Error',
+        'Failed to update favorites. The change will be synced when you are online.'
+      );
     }
   };
 
   // Get emoji based on category
   const getEmojiForCreature = (categoryId?: string) => {
     if (!categoryId) return '🐋';
-    
+
     switch (categoryId) {
       case 'b7c83fd5-3729-4620-92e5-a3a6452300f5': // Sharks
         return '🦈';
@@ -177,7 +472,7 @@ export default function CreatureDetailScreen() {
   // Get background color based on category
   const getBackgroundColor = (categoryId?: string) => {
     if (!categoryId) return '#0077B6';
-    
+
     switch (categoryId) {
       case 'b7c83fd5-3729-4620-92e5-a3a6452300f5': // Sharks
         return '#0077B6'; // Blue
@@ -199,7 +494,7 @@ export default function CreatureDetailScreen() {
   // Get color based on creature class
   const getClassColor = (creatureClass?: string) => {
     if (!creatureClass) return '#0077B6';
-    
+
     switch (creatureClass.toLowerCase()) {
       case 'common':
         return '#4CAF50'; // Green
@@ -223,11 +518,11 @@ export default function CreatureDetailScreen() {
       Alert.alert('Sign In Required', 'Please sign in to add a sighting.');
       return;
     }
-    
+
     if (creature) {
       router.push({
         pathname: '/sighting/add',
-        params: { creatureId: creature.id, creatureName: creature.name }
+        params: { creatureId: creature.id, creatureName: creature.name },
       });
     }
   };
@@ -237,7 +532,7 @@ export default function CreatureDetailScreen() {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -275,7 +570,7 @@ export default function CreatureDetailScreen() {
                 if (category) {
                   router.replace({
                     pathname: '/(tabs)/creatures',
-                    params: { category }
+                    params: { category },
                   });
                 } else {
                   router.back();
@@ -287,28 +582,45 @@ export default function CreatureDetailScreen() {
             </TouchableOpacity>
           ),
           headerRight: () => (
-            <TouchableOpacity 
-              style={[styles.favoriteButton, { marginRight: 10 }]} 
+            <TouchableOpacity
+              style={[styles.favoriteButton, { marginRight: 10 }]}
               onPress={toggleFavorite}
             >
-              <Heart color="white" fill={isFavorite ? "white" : "none"} size={24} />
+              <Heart
+                color="white"
+                fill={isFavorite ? 'white' : 'none'}
+                size={24}
+              />
             </TouchableOpacity>
           ),
           headerTitle: '',
         }}
       />
-      
+
       {/* Header with image */}
       <View style={styles.imageSection}>
         {creature.image_url ? (
-          <Image 
-            source={{ uri: creature.image_url }} 
+          <Image
+            source={{ uri: creature.image_url }}
             style={styles.creatureImage}
             resizeMode="cover"
           />
         ) : (
-          <View style={[styles.fallbackContainer, { backgroundColor: getBackgroundColor(creature.category_id) }]}>
-            <Text style={styles.fallbackEmoji}>{getEmojiForCreature(creature.category_id)}</Text>
+          <View
+            style={[
+              styles.fallbackContainer,
+              { backgroundColor: getBackgroundColor(creature.category_id) },
+            ]}
+          >
+            <Text style={styles.fallbackEmoji}>
+              {getEmojiForCreature(creature.category_id)}
+            </Text>
+          </View>
+        )}
+
+        {syncTime && (
+          <View style={styles.syncTimeContainer}>
+            <Text style={styles.syncTimeText}>Last sync: {syncTime}</Text>
           </View>
         )}
       </View>
@@ -317,9 +629,14 @@ export default function CreatureDetailScreen() {
       <View style={styles.nameContainer}>
         <Text style={styles.name}>{creature.name}</Text>
         <Text style={styles.scientificName}>{creature.scientific_name}</Text>
-        
+
         <View style={styles.tagContainer}>
-          <View style={[styles.tag, { backgroundColor: getClassColor(creature.class) }]}>
+          <View
+            style={[
+              styles.tag,
+              { backgroundColor: getClassColor(creature.class) },
+            ]}
+          >
             <Text style={styles.tagText}>{creature.class}</Text>
           </View>
           <View style={styles.pointsTag}>
@@ -330,22 +647,36 @@ export default function CreatureDetailScreen() {
 
       {/* Tab navigation */}
       <View style={styles.tabContainer}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'about' && styles.activeTab]} 
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'about' && styles.activeTab]}
           onPress={() => setActiveTab('about')}
         >
-          <Text style={[styles.tabText, activeTab === 'about' && styles.activeTabText]}>About</Text>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'about' && styles.activeTabText,
+            ]}
+          >
+            About
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'sightings' && styles.activeTab]} 
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'sightings' && styles.activeTab]}
           onPress={() => setActiveTab('sightings')}
         >
-          <Text style={[styles.tabText, activeTab === 'sightings' && styles.activeTabText]}>Sightings</Text>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'sightings' && styles.activeTabText,
+            ]}
+          >
+            Sightings
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* Tab content */}
-      <ScrollView 
+      <ScrollView
         style={styles.contentContainer}
         refreshControl={
           <RefreshControl
@@ -360,7 +691,7 @@ export default function CreatureDetailScreen() {
         {activeTab === 'about' && (
           <View style={styles.tabContent}>
             <Text style={styles.description}>{creature.description}</Text>
-            
+
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
                 <Text style={styles.statValue}>{creature.length}</Text>
@@ -371,12 +702,12 @@ export default function CreatureDetailScreen() {
                 <Text style={styles.statLabel}>Weight</Text>
               </View>
             </View>
-            
+
             <View style={styles.infoSection}>
               <Text style={styles.infoTitle}>Diet</Text>
               <Text style={styles.infoText}>{creature.diet}</Text>
             </View>
-            
+
             <View style={styles.infoSection}>
               <Text style={styles.infoTitle}>Lifespan</Text>
               <Text style={styles.infoText}>{creature.lifespan}</Text>
@@ -388,7 +719,7 @@ export default function CreatureDetailScreen() {
           <View style={styles.tabContent}>
             <View style={styles.sightingsHeader}>
               <Text style={styles.sightingsTitle}>Your Sightings</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.addSightingButton}
                 onPress={navigateToAddSighting}
               >
@@ -398,25 +729,31 @@ export default function CreatureDetailScreen() {
             </View>
 
             {sightingsLoading ? (
-              <ActivityIndicator size="small" color="#0077B6" style={styles.sightingsLoading} />
+              <ActivityIndicator
+                size="small"
+                color="#0077B6"
+                style={styles.sightingsLoading}
+              />
             ) : sightings.length === 0 ? (
               <View style={styles.noSightingsContainer}>
                 <Text style={styles.noSightingsText}>
                   You haven't recorded any sightings of this creature yet.
                 </Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.addFirstSightingButton}
                   onPress={navigateToAddSighting}
                 >
-                  <Text style={styles.addFirstSightingText}>Record Your First Sighting</Text>
+                  <Text style={styles.addFirstSightingText}>
+                    Record Your First Sighting
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : (
               sightings.map((sighting) => (
                 <View key={sighting.id} style={styles.sightingCard}>
                   {sighting.image_url ? (
-                    <Image 
-                      source={{ uri: sighting.image_url }} 
+                    <Image
+                      source={{ uri: sighting.image_url }}
                       style={styles.sightingImage}
                       resizeMode="cover"
                     />
@@ -425,26 +762,43 @@ export default function CreatureDetailScreen() {
                       <Camera size={30} color="#AAAAAA" />
                     </View>
                   )}
-                  
+
                   <View style={styles.sightingInfo}>
                     <View style={styles.sightingHeader}>
                       <View style={styles.sightingMeta}>
                         <View style={styles.sightingMetaItem}>
-                          <Calendar size={14} color="#0077B6" style={styles.sightingIcon} />
-                          <Text style={styles.sightingDate}>{formatDate(sighting.date)}</Text>
+                          <Calendar
+                            size={14}
+                            color="#0077B6"
+                            style={styles.sightingIcon}
+                          />
+                          <Text style={styles.sightingDate}>
+                            {formatDate(sighting.date)}
+                          </Text>
                         </View>
                         <View style={styles.sightingMetaItem}>
-                          <MapPin size={14} color="#0077B6" style={styles.sightingIcon} />
-                          <Text style={styles.sightingLocation} numberOfLines={1}>{sighting.location}</Text>
+                          <MapPin
+                            size={14}
+                            color="#0077B6"
+                            style={styles.sightingIcon}
+                          />
+                          <Text
+                            style={styles.sightingLocation}
+                            numberOfLines={1}
+                          >
+                            {sighting.location}
+                          </Text>
                         </View>
                       </View>
                       <TouchableOpacity style={styles.editButton}>
                         <Edit size={16} color="#0077B6" />
                       </TouchableOpacity>
                     </View>
-                    
+
                     {sighting.notes && (
-                      <Text style={styles.sightingNotes} numberOfLines={3}>{sighting.notes}</Text>
+                      <Text style={styles.sightingNotes} numberOfLines={3}>
+                        {sighting.notes}
+                      </Text>
                     )}
                   </View>
                 </View>
@@ -757,5 +1111,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#BBBBBB',
     lineHeight: 20,
+  },
+  syncTimeContainer: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 5,
+    borderRadius: 5,
+  },
+  syncTimeText: {
+    color: 'white',
+    fontSize: 12,
   },
 });

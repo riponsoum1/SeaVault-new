@@ -8,6 +8,9 @@ import { Profile } from './models/Profile';
 import { Dive } from './models/Dive';
 import { Trip } from './models/Trip';
 import { Creature } from './models/Creature';
+import { Category } from './models/Category';
+import { Sighting } from './models/Sighting';
+import { DiveSite } from './models/DiveSite';
 // Import other models as needed
 
 // Create the adapter
@@ -30,6 +33,9 @@ export const database = new Database({
     Dive,
     Trip,
     Creature,
+    Category,
+    Sighting,
+    DiveSite,
     // Add other models here
   ],
 });

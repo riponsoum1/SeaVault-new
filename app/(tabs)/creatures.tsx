@@ -1,15 +1,39 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  RefreshControl,
+} from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Category, Creature } from '../../lib/types';
+import {
+  Category as CategoryType,
+  Creature as CreatureType,
+} from '../../lib/types';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Search, Filter, CircleCheck as CheckCircle, X } from 'lucide-react-native';
+import {
+  Search,
+  Filter,
+  CircleCheck as CheckCircle,
+  X,
+} from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import React from 'react';
+import { database } from '../../database';
+import { synchronize } from '../../database/sync';
+import { Q } from '@nozbe/watermelondb';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Category } from '../../database/models/Category';
+import { Creature } from '../../database/models/Creature';
+import { Sighting } from '../../database/models/Sighting';
 
 export default function CreaturesScreen() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [creatures, setCreatures] = useState<Creature[]>([]);
+  const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [creatures, setCreatures] = useState<CreatureType[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -17,7 +41,8 @@ export default function CreaturesScreen() {
   const [sightedCreatures, setSightedCreatures] = useState<string[]>([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Creature[]>([]);
+  const [searchResults, setSearchResults] = useState<CreatureType[]>([]);
+  const [syncTime, setSyncTime] = useState<string | null>(null);
   const { user } = useAuth();
   const { category } = useLocalSearchParams();
 
@@ -27,16 +52,46 @@ export default function CreaturesScreen() {
       setShowCategories(false);
     }
     initialLoad();
+
+    // Load last sync time
+    AsyncStorage.getItem('@last_sync_time').then((time) => {
+      if (time) {
+        const syncDate = new Date(parseInt(time));
+        setSyncTime(syncDate.toLocaleString());
+      }
+    });
   }, [user, category]);
 
   const initialLoad = async () => {
     try {
       setLoading(true);
       await Promise.all([
-        fetchCategories(),
-        fetchCreatures(),
-        user && fetchSightedCreatures()
+        fetchCategoriesFromDatabase(),
+        fetchCreaturesFromDatabase(),
+        user && fetchSightedCreatures(),
       ]);
+
+      // Attempt to sync with server if online
+      if (user) {
+        try {
+          const result = await synchronize(user.id);
+          console.log('Sync result:', result);
+          if (result.success) {
+            // Reload data after successful sync
+            await Promise.all([
+              fetchCategoriesFromDatabase(),
+              fetchCreaturesFromDatabase(),
+              fetchSightedCreatures(),
+            ]);
+
+            // Update sync time
+            const currentTime = Date.now();
+            setSyncTime(new Date(currentTime).toLocaleString());
+          }
+        } catch (syncError) {
+          console.error('Error syncing data:', syncError);
+        }
+      }
     } catch (error) {
       console.error('Error in initial load:', error);
     } finally {
@@ -47,11 +102,34 @@ export default function CreaturesScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      // Always load from local database first for quick UI update
       await Promise.all([
-        fetchCategories(),
-        fetchCreatures(),
-        user && fetchSightedCreatures()
+        fetchCategoriesFromDatabase(),
+        fetchCreaturesFromDatabase(),
+        user && fetchSightedCreatures(),
       ]);
+
+      // Then try to sync with the server if user is logged in
+      if (user) {
+        try {
+          const result = await synchronize(user.id);
+          console.log('Sync result on refresh:', result);
+          if (result.success) {
+            // Reload data after successful sync
+            await Promise.all([
+              fetchCategoriesFromDatabase(),
+              fetchCreaturesFromDatabase(),
+              fetchSightedCreatures(),
+            ]);
+
+            // Update sync time
+            const currentTime = Date.now();
+            setSyncTime(new Date(currentTime).toLocaleString());
+          }
+        } catch (syncError) {
+          console.error('Error syncing on refresh:', syncError);
+        }
+      }
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
@@ -59,7 +137,43 @@ export default function CreaturesScreen() {
     }
   }, [user]);
 
-  const fetchCategories = async () => {
+  const fetchCategoriesFromDatabase = async () => {
+    try {
+      // Try to get categories from WatermelonDB
+      const categoriesCollection = database.get<Category>('categories');
+      const dbCategories = await categoriesCollection.query().fetch();
+
+      if (dbCategories.length > 0) {
+        const formattedCategories = dbCategories.map((cat) => ({
+          id: cat.id,
+          name: (cat as any).name,
+          description: (cat as any).description,
+          image_url: (cat as any).imageUrl,
+          emoji: (cat as any).emoji,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+        setCategories(formattedCategories as CategoryType[]);
+      } else {
+        // Fallback to AsyncStorage if WatermelonDB fails
+        const storedCategories = await AsyncStorage.getItem('@categories');
+        if (storedCategories) {
+          setCategories(JSON.parse(storedCategories) as CategoryType[]);
+        } else {
+          console.log(
+            'No categories in local storage, trying to fetch from Supabase'
+          );
+          await fetchCategoriesFromSupabase();
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching categories from database:', error);
+      // Fallback to Supabase
+      await fetchCategoriesFromSupabase();
+    }
+  };
+
+  const fetchCategoriesFromSupabase = async () => {
     try {
       const { data, error } = await supabase
         .from('categories')
@@ -70,15 +184,58 @@ export default function CreaturesScreen() {
         throw error;
       }
 
-      setCategories(data as Category[]);
+      if (data) {
+        setCategories(data as CategoryType[]);
+        // Store in AsyncStorage as fallback
+        await AsyncStorage.setItem('@categories', JSON.stringify(data));
+      }
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      console.error('Error fetching categories from Supabase:', error);
     }
   };
 
-  const fetchCreatures = async () => {
+  const fetchCreaturesFromDatabase = async () => {
     try {
-      setLoading(true);
+      // Try to get creatures from WatermelonDB
+      const creaturesCollection = database.get<Creature>('creatures');
+      const dbCreatures = await creaturesCollection.query().fetch();
+
+      if (dbCreatures.length > 0) {
+        const formattedCreatures = dbCreatures.map((creature) => ({
+          id: creature.id,
+          name: (creature as any).name,
+          scientific_name: (creature as any).scientificName,
+          description: (creature as any).description,
+          image_url: (creature as any).imageUrl,
+          category_id: (creature as any).categoryId,
+          rarity: (creature as any).rarity,
+          class: (creature as any).class,
+          points: (creature as any).points || 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+        setCreatures(formattedCreatures as CreatureType[]);
+      } else {
+        // Fallback to AsyncStorage if WatermelonDB fails
+        const storedCreatures = await AsyncStorage.getItem('@creatures');
+        if (storedCreatures) {
+          setCreatures(JSON.parse(storedCreatures) as CreatureType[]);
+        } else {
+          console.log(
+            'No creatures in local storage, trying to fetch from Supabase'
+          );
+          await fetchCreaturesFromSupabase();
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching creatures from database:', error);
+      // Fallback to Supabase
+      await fetchCreaturesFromSupabase();
+    }
+  };
+
+  const fetchCreaturesFromSupabase = async () => {
+    try {
       const { data, error } = await supabase
         .from('creatures')
         .select('*')
@@ -88,30 +245,49 @@ export default function CreaturesScreen() {
         throw error;
       }
 
-      setCreatures(data as Creature[]);
+      if (data) {
+        setCreatures(data as CreatureType[]);
+        // Store in AsyncStorage as fallback
+        await AsyncStorage.setItem('@creatures', JSON.stringify(data));
+      }
     } catch (error) {
-      console.error('Error fetching creatures:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching creatures from Supabase:', error);
     }
   };
 
   const fetchSightedCreatures = async () => {
     if (!user) return;
-    
+
     try {
-      const { data, error } = await supabase
-        .from('sightings')
-        .select('creature_id')
-        .eq('user_id', user.id);
+      // Try to get sightings from WatermelonDB
+      const sightingsCollection = database.get<Sighting>('sightings');
+      const dbSightings = await sightingsCollection
+        .query(Q.where('user_id', user.id))
+        .fetch();
 
-      if (error) {
-        throw error;
+      if (dbSightings.length > 0) {
+        // Extract unique creature IDs from sightings
+        const sightedIds = [
+          ...new Set(dbSightings.map((s) => (s as any).creatureId)),
+        ];
+        setSightedCreatures(sightedIds);
+      } else {
+        // Fallback to Supabase
+        const { data, error } = await supabase
+          .from('sightings')
+          .select('creature_id')
+          .eq('user_id', user.id);
+
+        if (error) {
+          throw error;
+        }
+
+        // Extract unique creature IDs from sightings
+        const sightedIds = [
+          ...new Set(data.map((sighting) => sighting.creature_id)),
+        ];
+        setSightedCreatures(sightedIds);
       }
-
-      // Extract unique creature IDs from sightings
-      const sightedIds = [...new Set(data.map(sighting => sighting.creature_id))];
-      setSightedCreatures(sightedIds);
     } catch (error) {
       console.error('Error fetching sighted creatures:', error);
     }
@@ -174,7 +350,7 @@ export default function CreaturesScreen() {
   // Get color based on creature class
   const getClassColor = (creatureClass?: string) => {
     if (!creatureClass) return '#0077B6';
-    
+
     switch (creatureClass.toLowerCase()) {
       case 'common':
         return '#4CAF50'; // Green
@@ -194,16 +370,16 @@ export default function CreaturesScreen() {
   };
 
   const filteredCreatures = selectedCategory
-    ? creatures.filter(creature => creature.category_id === selectedCategory)
+    ? creatures.filter((creature) => creature.category_id === selectedCategory)
     : creatures;
 
   const navigateToCreatureDetail = (creatureId: string) => {
     router.push({
       pathname: '/(tabs)/creature/[id]',
-      params: { 
+      params: {
         id: creatureId,
-        category: selectedCategory
-      }
+        category: selectedCategory,
+      },
     });
   };
 
@@ -220,9 +396,8 @@ export default function CreaturesScreen() {
   // Count sighted creatures in a category
   const countSightedInCategory = (categoryId: string) => {
     return creatures
-      .filter(c => c.category_id === categoryId)
-      .filter(c => hasBeenSighted(c.id))
-      .length;
+      .filter((c) => c.category_id === categoryId)
+      .filter((c) => hasBeenSighted(c.id)).length;
   };
 
   const toggleSearch = () => {
@@ -237,17 +412,18 @@ export default function CreaturesScreen() {
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
-    
+
     if (text.trim() === '') {
       setSearchResults([]);
       return;
     }
-    
-    const filtered = creatures.filter(creature => 
-      creature.name.toLowerCase().includes(text.toLowerCase()) ||
-      creature.scientific_name.toLowerCase().includes(text.toLowerCase())
+
+    const filtered = creatures.filter(
+      (creature) =>
+        creature.name.toLowerCase().includes(text.toLowerCase()) ||
+        creature.scientific_name.toLowerCase().includes(text.toLowerCase())
     );
-    
+
     setSearchResults(filtered);
   };
 
@@ -256,61 +432,69 @@ export default function CreaturesScreen() {
     setSearchResults([]);
   };
 
-  const renderCategoryItem = ({ item }: { item: Category }) => {
+  const renderCategoryItem = ({ item }: { item: CategoryType }) => {
     // Count creatures in this category
-    const creatureCount = creatures.filter(c => c.category_id === item.id).length;
+    const creatureCount = creatures.filter(
+      (c) => c.category_id === item.id
+    ).length;
     const sightedCount = countSightedInCategory(item.id);
-    
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.categoryCard}
         onPress={() => selectCategory(item.id)}
       >
         {item.image_url ? (
-          <Image 
-            source={{ uri: item.image_url }} 
+          <Image
+            source={{ uri: item.image_url }}
             style={styles.categoryImage}
             resizeMode="cover"
           />
         ) : (
-          <Text style={styles.categoryEmoji}>{getEmojiForCategory(item.name)}</Text>
+          <Text style={styles.categoryEmoji}>
+            {getEmojiForCategory(item.name)}
+          </Text>
         )}
         <View style={styles.categoryOverlay}>
           <Text style={styles.categoryTitle}>{item.name}</Text>
           <View style={styles.progressContainer}>
-            <Text style={styles.categoryProgress}>{sightedCount}/{creatureCount}</Text>
+            <Text style={styles.categoryProgress}>
+              {sightedCount}/{creatureCount}
+            </Text>
           </View>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const renderCreatureItem = ({ item }: { item: Creature }) => (
-    <TouchableOpacity 
+  const renderCreatureItem = ({ item }: { item: CreatureType }) => (
+    <TouchableOpacity
       style={[
         styles.creatureItem,
-        { 
+        {
           borderColor: getClassColor(item.class),
           borderWidth: 2,
-        }
+        },
       ]}
       onPress={() => navigateToCreatureDetail(item.id)}
     >
-      <View 
+      <View
         style={[
-          styles.imageContainer, 
-          { backgroundColor: getBackgroundColor(item.category_id) }
+          styles.imageContainer,
+          { backgroundColor: getBackgroundColor(item.category_id) },
         ]}
       >
         {item.image_url ? (
-          <Image 
-            source={{ uri: item.image_url }} 
+          <Image
+            source={{ uri: item.image_url }}
             style={styles.creatureImage}
             resizeMode="cover"
           />
         ) : (
           <Text style={styles.fallbackEmoji}>
-            {getEmojiForCategory(categories.find(c => c.id === item.category_id)?.name || '')}
+            {getEmojiForCategory(
+              categories.find((c) => c.id === item.category_id)?.name || ''
+            )}
           </Text>
         )}
         {hasBeenSighted(item.id) && (
@@ -321,8 +505,12 @@ export default function CreaturesScreen() {
       </View>
       <View style={styles.creatureInfo}>
         <View style={styles.textContainer}>
-          <Text style={styles.creatureName} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.scientificName} numberOfLines={1}>{item.scientific_name}</Text>
+          <Text style={styles.creatureName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.scientificName} numberOfLines={1}>
+            {item.scientific_name}
+          </Text>
         </View>
         <View style={styles.pointsBadge}>
           <Text style={styles.pointsText}>{item.points}</Text>
@@ -335,17 +523,19 @@ export default function CreaturesScreen() {
     <View style={styles.container}>
       <View style={styles.headerContainer}>
         <Text style={styles.header}>SeaVault</Text>
-        <TouchableOpacity 
-          style={styles.filterButton}
-          onPress={toggleSearch}
-        >
-          {isSearchActive ? 
-            <Filter size={20} color="#0077B6" /> :
+        <TouchableOpacity style={styles.filterButton} onPress={toggleSearch}>
+          {isSearchActive ? (
+            <Filter size={20} color="#0077B6" />
+          ) : (
             <Search size={20} color="#0077B6" />
-          }
+          )}
         </TouchableOpacity>
       </View>
-      
+
+      {syncTime && (
+        <Text style={styles.syncTimeText}>Last sync: {syncTime}</Text>
+      )}
+
       {isSearchActive ? (
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
@@ -364,21 +554,25 @@ export default function CreaturesScreen() {
               </TouchableOpacity>
             )}
           </View>
-          
+
           <FlatList
             data={searchResults}
             renderItem={renderCreatureItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
             contentContainerStyle={styles.searchResultsList}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               searchQuery.trim() !== '' ? (
                 <View style={styles.noResultsContainer}>
-                  <Text style={styles.noResultsText}>No creatures found matching "{searchQuery}"</Text>
+                  <Text style={styles.noResultsText}>
+                    No creatures found matching "{searchQuery}"
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.searchPromptContainer}>
-                  <Text style={styles.searchPromptText}>Search for creatures by name or scientific name</Text>
+                  <Text style={styles.searchPromptText}>
+                    Search for creatures by name or scientific name
+                  </Text>
                 </View>
               )
             }
@@ -388,7 +582,7 @@ export default function CreaturesScreen() {
         <FlatList
           data={categories}
           renderItem={renderCategoryItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.categoriesGrid}
           numColumns={2}
           showsVerticalScrollIndicator={false}
@@ -406,20 +600,21 @@ export default function CreaturesScreen() {
         <>
           <View style={styles.categoryHeader}>
             <Text style={styles.categoryHeaderText}>
-              {categories.find(c => c.id === selectedCategory)?.name || 'All Creatures'}
+              {categories.find((c) => c.id === selectedCategory)?.name ||
+                'All Creatures'}
             </Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.backButton}
               onPress={() => setShowCategories(true)}
             >
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
           </View>
-          
+
           <FlatList
             data={filteredCreatures}
             renderItem={renderCreatureItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             refreshControl={
@@ -455,6 +650,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: 'white',
+  },
+  syncTimeText: {
+    fontSize: 12,
+    color: '#777777',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   filterButton: {
     width: 40,
@@ -664,5 +865,5 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 14,
-  }
+  },
 });
