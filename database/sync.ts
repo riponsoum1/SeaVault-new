@@ -4,6 +4,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { Q } from '@nozbe/watermelondb';
 import { User } from './models/User';
 import { Creature } from './models/Creature';
+import { Sighting } from './models/Sighting';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Store pending sync to be executed when connection is restored
@@ -24,15 +25,34 @@ const isConnected = async (): Promise<boolean> => {
 export const setupNetworkListener = () => {
   NetInfo.addEventListener((state) => {
     // If we're back online and have a pending sync, execute it
-    if (state.isConnected && state.isInternetReachable && pendingSyncUserId) {
-      console.log('Connection restored, executing pending sync');
-      const userId = pendingSyncUserId;
-      pendingSyncUserId = null;
-      synchronize(userId).catch((err) => {
-        console.error('Failed to execute pending sync:', err);
-        // Re-queue the sync if it fails
-        pendingSyncUserId = userId;
-      });
+    if (state.isConnected && state.isInternetReachable) {
+      console.log('Connection restored, checking for pending sync');
+
+      // If we have a pending user sync, execute it
+      if (pendingSyncUserId) {
+        console.log('Executing pending user sync');
+        const userId = pendingSyncUserId;
+        pendingSyncUserId = null;
+        synchronize(userId).catch((err: any) => {
+          console.error('Failed to execute pending sync:', err);
+          // Re-queue the sync if it fails
+          pendingSyncUserId = userId;
+        });
+      }
+
+      // Check for unsaved sightings from any user session
+      supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          if (data?.session?.user?.id) {
+            syncLocalSightings(data.session.user.id).catch((err: any) => {
+              console.error('Failed to sync local sightings:', err);
+            });
+          }
+        })
+        .catch((err: any) => {
+          console.error('Failed to get current session:', err);
+        });
     }
   });
 };
@@ -67,6 +87,16 @@ export const synchronize = async (userId: string) => {
           creatures?.length || 0
         } creatures for offline use`
       );
+
+      // Sync any local sightings that haven't been uploaded yet
+      try {
+        const sightingsSynced = await syncLocalSightings(userId);
+        console.log(
+          `Sightings sync ${sightingsSynced ? 'successful' : 'failed'}`
+        );
+      } catch (sightingsError) {
+        console.error('Failed to sync local sightings:', sightingsError);
+      }
     } catch (syncError) {
       console.error('Error syncing data:', syncError);
       // Continue with other sync operations
@@ -115,6 +145,195 @@ export const synchronize = async (userId: string) => {
       success: false,
       message: error.message || 'Synchronization failed',
     };
+  }
+};
+
+// New function to sync local sightings to Supabase when online
+export const syncLocalSightings = async (userId: string): Promise<boolean> => {
+  console.log('Syncing local sightings to Supabase');
+
+  // Check for internet connectivity
+  const connected = await isConnected();
+  if (!connected) {
+    console.log('No internet connection for syncing sightings');
+    return false;
+  }
+
+  try {
+    // First try WatermelonDB
+    try {
+      const sightingsCollection = database.get<Sighting>('sightings');
+      const unsyncedSightings = await sightingsCollection
+        .query(Q.where('isSynced', false))
+        .fetch();
+
+      console.log(
+        `Found ${unsyncedSightings.length} unsynced sightings in WatermelonDB`
+      );
+
+      if (unsyncedSightings.length > 0) {
+        for (const sighting of unsyncedSightings) {
+          try {
+            // Extract the needed fields from the WatermelonDB record
+            const sightingData = {
+              user_id: sighting.userId,
+              creature_id: sighting.creatureId,
+              dive_site_id: sighting.diveId || null, // Using diveId from the model
+              dive_type: (sighting as any).dive_type || null,
+              time_of_day: (sighting as any).time_of_day || null,
+              depth: (sighting as any).depth || null,
+              date: new Date(sighting.sightedAt).toISOString().split('T')[0],
+              notes: sighting.notes || null,
+              image_url: null, // Handle image upload separately
+            };
+
+            // If there's a local image, upload it first
+            if (
+              (sighting as any).imageUrl &&
+              (sighting as any).imageUrl.startsWith('file://')
+            ) {
+              try {
+                const { uploadSightingImage } = require('../lib/supabase');
+                sightingData.image_url = await uploadSightingImage(
+                  (sighting as any).imageUrl,
+                  userId
+                );
+              } catch (imageError) {
+                console.error('Failed to upload sighting image:', imageError);
+              }
+            }
+
+            // Insert the sighting into Supabase
+            const { error } = await supabase
+              .from('sightings')
+              .insert([sightingData]);
+
+            if (error) {
+              console.error('Error syncing sighting to Supabase:', error);
+              continue;
+            }
+
+            // Update the local record as synced
+            await database.write(async () => {
+              await sighting.update((record: any) => {
+                record.isSynced = true;
+                if (sightingData.image_url)
+                  record.imageUrl = sightingData.image_url;
+              });
+            });
+
+            console.log('Successfully synced sighting to Supabase');
+          } catch (sightingError) {
+            console.error(
+              'Error processing individual sighting:',
+              sightingError
+            );
+          }
+        }
+      }
+    } catch (dbError) {
+      console.warn('Error accessing WatermelonDB sightings:', dbError);
+    }
+
+    // Then check AsyncStorage for any sightings that might be stored there
+    try {
+      const storedSightings = await AsyncStorage.getItem('@sightings');
+      if (storedSightings) {
+        const sightings = JSON.parse(storedSightings);
+        const unsyncedSightings = sightings.filter(
+          (s: any) => !s.is_synced && s.user_id === userId
+        );
+
+        console.log(
+          `Found ${unsyncedSightings.length} unsynced sightings in AsyncStorage`
+        );
+
+        if (unsyncedSightings.length > 0) {
+          const updatedSightings = [...sightings];
+
+          for (let i = 0; i < unsyncedSightings.length; i++) {
+            const sighting = unsyncedSightings[i];
+            try {
+              // Prepare sighting data for Supabase
+              const sightingData = {
+                user_id: sighting.user_id,
+                creature_id: sighting.creature_id,
+                dive_site_id: sighting.dive_site_id,
+                dive_type: sighting.dive_type,
+                time_of_day: sighting.time_of_day,
+                depth: sighting.depth,
+                date: sighting.date,
+                notes: sighting.notes,
+                image_url: null,
+              };
+
+              // If there's a local image, upload it first
+              if (
+                sighting.image_url &&
+                sighting.image_url.startsWith('file://')
+              ) {
+                try {
+                  const { uploadSightingImage } = require('../lib/supabase');
+                  sightingData.image_url = await uploadSightingImage(
+                    sighting.image_url,
+                    userId
+                  );
+                } catch (imageError) {
+                  console.error('Failed to upload sighting image:', imageError);
+                }
+              } else {
+                sightingData.image_url = sighting.image_url;
+              }
+
+              // Insert the sighting into Supabase
+              const { error } = await supabase
+                .from('sightings')
+                .insert([sightingData]);
+
+              if (error) {
+                console.error('Error syncing sighting to Supabase:', error);
+                continue;
+              }
+
+              // Update the sighting in the array
+              const index = updatedSightings.findIndex(
+                (s: any) => s.id === sighting.id
+              );
+              if (index !== -1) {
+                updatedSightings[index] = {
+                  ...updatedSightings[index],
+                  is_synced: true,
+                  image_url:
+                    sightingData.image_url || updatedSightings[index].image_url,
+                };
+              }
+
+              console.log(
+                'Successfully synced sighting from AsyncStorage to Supabase'
+              );
+            } catch (sightingError) {
+              console.error(
+                'Error processing AsyncStorage sighting:',
+                sightingError
+              );
+            }
+          }
+
+          // Update AsyncStorage with the synced status
+          await AsyncStorage.setItem(
+            '@sightings',
+            JSON.stringify(updatedSightings)
+          );
+        }
+      }
+    } catch (storageError) {
+      console.error('Error accessing AsyncStorage sightings:', storageError);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error syncing local sightings:', error);
+    return false;
   }
 };
 
@@ -540,7 +759,7 @@ async function syncDiveSitesForOfflineUse() {
 }
 
 // Store dive sites in local database
-async function storeDiveSitesInDatabase(diveSites) {
+async function storeDiveSitesInDatabase(diveSites: any[]) {
   try {
     const diveSitesCollection = database.get('dive_sites');
 

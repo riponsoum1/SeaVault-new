@@ -11,7 +11,6 @@ import {
   Image,
   Platform,
   Modal,
-  FlatList,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase, uploadSightingImage } from '../../lib/supabase';
@@ -19,20 +18,22 @@ import * as ImagePicker from 'expo-image-picker';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '../../context/AuthContext';
 import { checkAndUpdateAchievements } from '../../lib/achievements';
-import {
-  ChevronLeft,
-  Camera,
-  Calendar,
-  MapPin,
-  Search,
-  X,
-} from 'lucide-react-native';
+import { ChevronLeft, Camera, Calendar } from 'lucide-react-native';
 import { database } from '../../database';
 import { DiveSite } from '../../database/models/DiveSite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Q } from '@nozbe/watermelondb';
+import DiveSiteSelector from '../../components/DiveSiteSelector';
 
 const DIVE_TYPES = ['Shore', 'Boat', 'Wreck', 'Drift', 'Cave', 'Night', 'Deep'];
+
+// Define interface for dive site if not using the one from database/models
+interface DiveSiteType {
+  id: string;
+  name: string;
+  location: string;
+  type?: string;
+}
 
 export default function AddSightingScreen() {
   const { creatureId, creatureName } = useLocalSearchParams();
@@ -45,150 +46,40 @@ export default function AddSightingScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDiveTypePicker, setShowDiveTypePicker] = useState(false);
-  const [showDiveSiteModal, setShowDiveSiteModal] = useState(false);
 
-  const [diveSites, setDiveSites] = useState<any[]>([]);
-  const [filteredDiveSites, setFilteredDiveSites] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDiveSite, setSelectedDiveSite] = useState<any>(null);
-
+  const [selectedDiveSite, setSelectedDiveSite] = useState<DiveSiteType | null>(
+    null
+  );
   const [diveType, setDiveType] = useState('');
   const [timeOfDay, setTimeOfDay] = useState('');
   const [depth, setDepth] = useState('');
 
-  // For custom dive site
-  const [isCustomDiveSite, setIsCustomDiveSite] = useState(false);
-  const [customDiveSiteName, setCustomDiveSiteName] = useState('');
-  const [customDiveSiteLocation, setCustomDiveSiteLocation] = useState('');
-
-  useEffect(() => {
-    fetchDiveSites();
-  }, []);
-
-  const fetchDiveSites = async () => {
+  // Custom fetch function for dive sites from WatermelonDB and AsyncStorage
+  const fetchDiveSites = async (): Promise<DiveSiteType[]> => {
     try {
       // Try to get dive sites from WatermelonDB
       const diveSitesCollection = database.get<DiveSite>('dive_sites');
       const dbDiveSites = await diveSitesCollection.query().fetch();
 
       if (dbDiveSites.length > 0) {
-        const formattedDiveSites = dbDiveSites.map((site) => ({
+        return dbDiveSites.map((site) => ({
           id: site.id,
           name: (site as any).name,
           location: (site as any).location,
-          country: (site as any).country,
-          region: (site as any).region,
-          description: (site as any).description,
-          depth: (site as any).depth,
           type: (site as any).type,
         }));
-        setDiveSites(formattedDiveSites);
-        setFilteredDiveSites(formattedDiveSites);
       } else {
         // Fallback to AsyncStorage
         const storedDiveSites = await AsyncStorage.getItem('@dive_sites');
         if (storedDiveSites) {
-          const parsedSites = JSON.parse(storedDiveSites);
-          setDiveSites(parsedSites);
-          setFilteredDiveSites(parsedSites);
-        } else {
-          // If no stored sites, create some default ones
-          createDefaultDiveSites();
+          return JSON.parse(storedDiveSites);
         }
       }
+      return [];
     } catch (error) {
       console.error('Error fetching dive sites:', error);
-      createDefaultDiveSites();
+      return [];
     }
-  };
-
-  const createDefaultDiveSites = () => {
-    const defaultDiveSites = [
-      {
-        id: '1',
-        name: 'Great Blue Hole',
-        location: 'Lighthouse Reef Atoll, Belize',
-        type: 'blue hole',
-      },
-      {
-        id: '2',
-        name: 'Barracuda Point',
-        location: 'Sipadan Island, Malaysia',
-        type: 'wall',
-      },
-      {
-        id: '3',
-        name: 'SS Thistlegorm',
-        location: 'Red Sea, Egypt',
-        type: 'wreck',
-      },
-      {
-        id: '4',
-        name: 'Blue Corner Wall',
-        location: 'Palau, Micronesia',
-        type: 'wall',
-      },
-      {
-        id: '5',
-        name: 'Manta Ray Night Dive',
-        location: 'Kailua Kona, Hawaii',
-        type: 'night',
-      },
-    ];
-    setDiveSites(defaultDiveSites);
-    setFilteredDiveSites(defaultDiveSites);
-    AsyncStorage.setItem('@dive_sites', JSON.stringify(defaultDiveSites));
-  };
-
-  const handleSearch = (text: string) => {
-    setSearchTerm(text);
-    if (text) {
-      const filtered = diveSites.filter(
-        (site) =>
-          site.name.toLowerCase().includes(text.toLowerCase()) ||
-          site.location.toLowerCase().includes(text.toLowerCase())
-      );
-      setFilteredDiveSites(filtered);
-    } else {
-      setFilteredDiveSites(diveSites);
-    }
-  };
-
-  const selectDiveSite = (site: any) => {
-    setSelectedDiveSite(site);
-    setShowDiveSiteModal(false);
-    setIsCustomDiveSite(false);
-  };
-
-  const addCustomDiveSite = () => {
-    if (!customDiveSiteName || !customDiveSiteLocation) {
-      Alert.alert(
-        'Please enter both name and location for the custom dive site'
-      );
-      return;
-    }
-
-    const newSite = {
-      id: `custom-${Date.now()}`,
-      name: customDiveSiteName,
-      location: customDiveSiteLocation,
-      type: 'custom',
-    };
-
-    // Add to current list and select it
-    const updatedSites = [...diveSites, newSite];
-    setDiveSites(updatedSites);
-    setFilteredDiveSites(updatedSites);
-    setSelectedDiveSite(newSite);
-
-    // Store for future use
-    AsyncStorage.setItem('@dive_sites', JSON.stringify(updatedSites));
-
-    // Clear form and close modal
-    setCustomDiveSiteName('');
-    setCustomDiveSiteLocation('');
-    setIsCustomDiveSite(false);
-    setShowDiveSiteModal(false);
   };
 
   const pickImage = async () => {
@@ -255,8 +146,6 @@ export default function AddSightingScreen() {
             user_id: user.id,
             creature_id: creatureId,
             dive_site_id: selectedDiveSite.id,
-            dive_site_name: selectedDiveSite.name,
-            dive_site_location: selectedDiveSite.location,
             dive_type: diveType || null,
             time_of_day: formattedTime,
             depth: depth ? Number(depth) : null,
@@ -295,6 +184,16 @@ export default function AddSightingScreen() {
       } catch (onlineError) {
         console.error('Failed to save sighting online:', onlineError);
         // Continue anyway since we've saved offline
+
+        // Try to trigger immediate synchronization
+        try {
+          const { syncLocalSightings } = require('../../database/sync');
+          syncLocalSightings(user.id).catch((err: any) => {
+            console.log('Deferred sync will attempt later:', err);
+          });
+        } catch (syncError) {
+          console.log('Could not immediately sync, will try later');
+        }
       }
 
       Alert.alert('Success', 'Sighting saved!');
@@ -378,15 +277,11 @@ export default function AddSightingScreen() {
 
         {/* Dive Site Selector */}
         <Text style={styles.label}>Dive Site</Text>
-        <TouchableOpacity
-          style={styles.siteSelector}
-          onPress={() => setShowDiveSiteModal(true)}
-        >
-          <MapPin size={20} color="#0077B6" style={styles.selectorIcon} />
-          <Text style={styles.selectorText}>
-            {selectedDiveSite ? selectedDiveSite.name : 'Select a dive site'}
-          </Text>
-        </TouchableOpacity>
+        <DiveSiteSelector
+          selectedDiveSite={selectedDiveSite}
+          onSelectDiveSite={setSelectedDiveSite}
+          customFetchFunction={fetchDiveSites}
+        />
 
         {/* Dive Type */}
         <Text style={styles.label}>Dive Type</Text>
@@ -501,111 +396,6 @@ export default function AddSightingScreen() {
                 />
               ))}
             </Picker>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Dive Site Selection Modal */}
-      <Modal
-        visible={showDiveSiteModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowDiveSiteModal(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.siteModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Dive Site</Text>
-              <TouchableOpacity onPress={() => setShowDiveSiteModal(false)}>
-                <Text style={styles.modalDoneButton}>Done</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.searchContainer}>
-              <Search size={20} color="#666" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search dive sites..."
-                value={searchTerm}
-                onChangeText={handleSearch}
-                placeholderTextColor="#666"
-              />
-              {searchTerm.length > 0 && (
-                <TouchableOpacity onPress={() => handleSearch('')}>
-                  <X size={18} color="#666" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {isCustomDiveSite ? (
-              <View style={styles.customSiteForm}>
-                <Text style={styles.customFormTitle}>Add Custom Dive Site</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Dive Site Name"
-                  value={customDiveSiteName}
-                  onChangeText={setCustomDiveSiteName}
-                  placeholderTextColor="#666"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Location (e.g. Bahamas, Caribbean)"
-                  value={customDiveSiteLocation}
-                  onChangeText={setCustomDiveSiteLocation}
-                  placeholderTextColor="#666"
-                />
-                <View style={styles.customFormButtons}>
-                  <TouchableOpacity
-                    style={[styles.customFormButton, styles.cancelButton]}
-                    onPress={() => setIsCustomDiveSite(false)}
-                  >
-                    <Text style={styles.customButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.customFormButton, styles.addButton]}
-                    onPress={addCustomDiveSite}
-                  >
-                    <Text style={styles.customButtonText}>Add Site</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <>
-                <FlatList
-                  data={filteredDiveSites}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.siteItem}
-                      onPress={() => selectDiveSite(item)}
-                    >
-                      <View style={styles.siteInfo}>
-                        <Text style={styles.siteName}>{item.name}</Text>
-                        <Text style={styles.siteLocation}>{item.location}</Text>
-                        {item.type && (
-                          <View style={styles.siteTypeTag}>
-                            <Text style={styles.siteTypeText}>{item.type}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <Text style={styles.noResultsText}>
-                      No dive sites found
-                    </Text>
-                  }
-                  style={styles.siteList}
-                />
-
-                <TouchableOpacity
-                  style={styles.addCustomButton}
-                  onPress={() => setIsCustomDiveSite(true)}
-                >
-                  <Text style={styles.addCustomText}>Add Custom Dive Site</Text>
-                </TouchableOpacity>
-              </>
-            )}
           </View>
         </View>
       </Modal>
@@ -779,111 +569,6 @@ const styles = StyleSheet.create({
   },
   modalDoneButton: {
     color: '#0077B6',
-    fontWeight: 'bold',
-  },
-  siteModalContent: {
-    backgroundColor: '#1E1E1E',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    height: '80%',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 15,
-  },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
-    flex: 1,
-    color: 'white',
-    fontSize: 16,
-  },
-  siteList: {
-    flex: 1,
-    marginBottom: 15,
-  },
-  siteItem: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 10,
-  },
-  siteInfo: {
-    flex: 1,
-  },
-  siteName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 5,
-  },
-  siteLocation: {
-    fontSize: 14,
-    color: '#AAAAAA',
-    marginBottom: 8,
-  },
-  siteTypeTag: {
-    backgroundColor: '#0077B6',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  siteTypeText: {
-    color: 'white',
-    fontSize: 12,
-  },
-  noResultsText: {
-    color: '#AAAAAA',
-    textAlign: 'center',
-    padding: 20,
-  },
-  addCustomButton: {
-    backgroundColor: '#0077B6',
-    borderRadius: 8,
-    padding: 15,
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  addCustomText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  customSiteForm: {
-    flex: 1,
-  },
-  customFormTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 15,
-  },
-  customFormButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  customFormButton: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#444444',
-    marginRight: 10,
-  },
-  addButton: {
-    backgroundColor: '#0077B6',
-  },
-  customButtonText: {
-    color: 'white',
     fontWeight: 'bold',
   },
 });

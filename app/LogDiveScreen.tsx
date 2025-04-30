@@ -12,25 +12,38 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
-  FlatList,
   SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
-import {
-  ChevronLeft,
-  Plus,
-  Camera,
-  X,
-  MapPin,
-  Search,
-} from 'lucide-react-native';
+import { ChevronLeft, Plus, Camera, X } from 'lucide-react-native';
 import { useDiveLog } from '../context/DiveLogContext';
 import { Creature } from '@/lib/types';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DiveSiteSelector from '../components/DiveSiteSelector';
+import { database } from '../database';
+import { Q } from '@nozbe/watermelondb';
+import NetInfo from '@react-native-community/netinfo';
+
+// Define interface for dive site
+interface DiveSite {
+  id: string;
+  name: string;
+  location: string;
+  type?: string;
+}
+
+// Define interfaces for dive details
+interface DiveDetails {
+  date: string;
+  timeOfDay: string;
+  diveType: string | null;
+  depth: number | null;
+  globalNotes: string | null;
+}
 
 const DIVE_TYPES = ['Shore', 'Boat', 'Wreck', 'Drift', 'Cave', 'Night', 'Deep'];
 
@@ -52,8 +65,6 @@ export default function LogDiveScreen() {
   const [globalNotes, setGlobalNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [diveSites, setDiveSites] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [showDiveTypePicker, setShowDiveTypePicker] = useState(false);
   const [creatureSightings, setCreatureSightings] = useState<
     CreatureSighting[]
@@ -61,154 +72,42 @@ export default function LogDiveScreen() {
   const [creatureImages, setCreatureImages] = useState<Record<string, string>>(
     {}
   );
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
 
   // Dive site state
-  const [showDiveSiteModal, setShowDiveSiteModal] = useState(false);
-  const [filteredDiveSites, setFilteredDiveSites] = useState<any[]>([]);
-  const [selectedDiveSite, setSelectedDiveSite] = useState<any>(null);
+  const [selectedDiveSite, setSelectedDiveSite] = useState<DiveSite | null>(
+    null
+  );
 
-  // For custom dive site
-  const [isCustomDiveSite, setIsCustomDiveSite] = useState(false);
-  const [customDiveSiteName, setCustomDiveSiteName] = useState('');
-  const [customDiveSiteLocation, setCustomDiveSiteLocation] = useState('');
-
-  useEffect(() => {
-    fetchDiveSites();
-  }, []);
-
-  const fetchDiveSites = async () => {
+  // Custom fetch function for dive sites from Supabase
+  const fetchDiveSites = async (): Promise<DiveSite[]> => {
     try {
-      // Try to get dive sites from Supabase first
       const { data: supabaseDiveSites, error } = await supabase
         .from('dive_sites')
         .select('*');
 
       if (supabaseDiveSites && supabaseDiveSites.length > 0 && !error) {
-        setDiveSites(supabaseDiveSites);
-        setFilteredDiveSites(supabaseDiveSites);
+        return supabaseDiveSites;
       } else {
         // Fallback to AsyncStorage
         const storedDiveSites = await AsyncStorage.getItem('@dive_sites');
         if (storedDiveSites) {
-          const parsedSites = JSON.parse(storedDiveSites);
-          setDiveSites(parsedSites);
-          setFilteredDiveSites(parsedSites);
-        } else {
-          // If no stored sites, create some default ones
-          createDefaultDiveSites();
+          return JSON.parse(storedDiveSites);
         }
       }
+      return [];
     } catch (error) {
       console.error('Error fetching dive sites:', error);
-      createDefaultDiveSites();
-    }
-  };
-
-  const createDefaultDiveSites = () => {
-    const defaultDiveSites = [
-      {
-        id: '1',
-        name: 'Great Blue Hole',
-        location: 'Lighthouse Reef Atoll, Belize',
-        type: 'blue hole',
-      },
-      {
-        id: '2',
-        name: 'Barracuda Point',
-        location: 'Sipadan Island, Malaysia',
-        type: 'wall',
-      },
-      {
-        id: '3',
-        name: 'SS Thistlegorm',
-        location: 'Red Sea, Egypt',
-        type: 'wreck',
-      },
-      {
-        id: '4',
-        name: 'Blue Corner Wall',
-        location: 'Palau, Micronesia',
-        type: 'wall',
-      },
-      {
-        id: '5',
-        name: 'Manta Ray Night Dive',
-        location: 'Kailua Kona, Hawaii',
-        type: 'night',
-      },
-    ];
-    setDiveSites(defaultDiveSites);
-    setFilteredDiveSites(defaultDiveSites);
-    AsyncStorage.setItem('@dive_sites', JSON.stringify(defaultDiveSites));
-  };
-
-  const handleSearch = (text: string) => {
-    setSearchTerm(text);
-    if (text) {
-      const filtered = diveSites.filter(
-        (site) =>
-          site.name.toLowerCase().includes(text.toLowerCase()) ||
-          site.location.toLowerCase().includes(text.toLowerCase())
-      );
-      setFilteredDiveSites(filtered);
-    } else {
-      setFilteredDiveSites(diveSites);
-    }
-  };
-
-  const selectDiveSite = (site: any) => {
-    setSelectedDiveSite(site);
-    setShowDiveSiteModal(false);
-    setIsCustomDiveSite(false);
-  };
-
-  const addCustomDiveSite = () => {
-    if (!customDiveSiteName || !customDiveSiteLocation) {
-      Alert.alert(
-        'Please enter both name and location for the custom dive site'
-      );
-      return;
-    }
-
-    const newSite = {
-      id: `custom-${Date.now()}`,
-      name: customDiveSiteName,
-      location: customDiveSiteLocation,
-      type: 'custom',
-    };
-
-    // Add to current list and select it
-    const updatedSites = [...diveSites, newSite];
-    setDiveSites(updatedSites);
-    setFilteredDiveSites(updatedSites);
-    setSelectedDiveSite(newSite);
-
-    // Store for future use
-    AsyncStorage.setItem('@dive_sites', JSON.stringify(updatedSites));
-
-    // Clear form and close modal
-    setCustomDiveSiteName('');
-    setCustomDiveSiteLocation('');
-    setIsCustomDiveSite(false);
-    setShowDiveSiteModal(false);
-  };
-
-  const fetchCreatureImage = async (creatureId: string) => {
-    const { data, error } = await supabase
-      .from('creatures')
-      .select('image_url')
-      .eq('id', creatureId)
-      .single();
-
-    if (!error && data) {
-      setCreatureImages((prev) => ({
-        ...prev,
-        [creatureId]: data.image_url,
-      }));
+      return [];
     }
   };
 
   useEffect(() => {
+    // Check network status
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsConnected(state.isConnected);
+    });
+
     if (initialCreatures.length > 0) {
       const newSightings = initialCreatures.map(
         (creature) =>
@@ -226,7 +125,26 @@ export default function LogDiveScreen() {
         fetchCreatureImage(creature.id);
       });
     }
+
+    return () => {
+      unsubscribe();
+    };
   }, [initialCreatures]);
+
+  const fetchCreatureImage = async (creatureId: string) => {
+    const { data, error } = await supabase
+      .from('creatures')
+      .select('image_url')
+      .eq('id', creatureId)
+      .single();
+
+    if (!error && data) {
+      setCreatureImages((prev) => ({
+        ...prev,
+        [creatureId]: data.image_url,
+      }));
+    }
+  };
 
   const pickImage = async (creatureId: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -260,6 +178,182 @@ export default function LogDiveScreen() {
     setCreatureSightings((prev) => prev.filter((c) => c.id !== creatureId));
   };
 
+  const saveDiveToLocalDB = async (
+    creatureSighting: CreatureSighting,
+    diveDetails: DiveDetails
+  ) => {
+    try {
+      // Generate a unique ID
+      const localId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      // Get the sightings collection from WatermelonDB
+      const sightingsCollection = database.get('sightings');
+
+      // Save to WatermelonDB
+      await database.write(async () => {
+        await sightingsCollection.create((record) => {
+          // Set raw ID to ensure it's unique
+          record._raw.id = localId;
+
+          // Get available fields from the model schema
+          const availableFields = Object.keys(record);
+
+          // Helper to safely set fields
+          const setField = (field: string, value: any) => {
+            if (availableFields.includes(field)) {
+              // Only set the field if it exists and is not a function
+              const anyRecord = record as any;
+              if (typeof anyRecord[field] !== 'function') {
+                anyRecord[field] = value;
+              }
+            }
+          };
+
+          // User info
+          setField('userId', user?.id || '');
+
+          // Creature info
+          setField('creatureId', creatureSighting.id);
+
+          // Dive site info
+          setField('diveSiteId', selectedDiveSite?.id || null);
+          setField('diveSiteName', selectedDiveSite?.name || '');
+          setField('diveSiteLocation', selectedDiveSite?.location || '');
+          setField(
+            'location',
+            `${selectedDiveSite?.name || ''}, ${
+              selectedDiveSite?.location || ''
+            }`
+          );
+
+          // Dive details
+          setField('diveType', diveDetails.diveType);
+          setField('timeOfDay', diveDetails.timeOfDay);
+          setField('depth', diveDetails.depth);
+          setField('date', diveDetails.date);
+          setField('sightedAt', new Date(diveDetails.date).getTime());
+
+          // Notes and image
+          setField('notes', creatureSighting.notes || null);
+          setField('diveNotes', diveDetails.globalNotes);
+          setField('imageUrl', creatureSighting.imageUri || null);
+
+          // Sync status
+          setField('isSynced', false);
+        });
+      });
+
+      console.log(`Saved creature ${creatureSighting.name} to local database`);
+      return localId;
+    } catch (error) {
+      console.error('Error saving to local database:', error);
+      throw error;
+    }
+  };
+
+  const syncWithServer = async (localId: string) => {
+    if (!isConnected) return false;
+
+    try {
+      // Find the local record
+      const sightingsCollection = database.get('sightings');
+      const localRecord = await sightingsCollection.find(localId);
+
+      if (!localRecord) {
+        console.error('Could not find local record to sync');
+        return false;
+      }
+
+      // Cast to access fields
+      const record = localRecord as any;
+
+      // Get user ID - ensure it's valid
+      const userId =
+        record.userId && record.userId.trim() ? record.userId : user?.id;
+      if (!userId) {
+        console.error('Missing user ID for sync, cannot proceed');
+        return false;
+      }
+
+      // Try with the simplified schema first (less likely to have column issues)
+      const simplifiedData: Record<string, any> = {
+        user_id: userId,
+        creature_id: record.creatureId,
+        location:
+          record.location ||
+          `${record.diveSiteName || ''}, ${record.diveSiteLocation || ''}`,
+        date: record.date,
+        notes: record.notes,
+        // Only include fields that have values
+        ...(record.diveNotes ? { dive_notes: record.diveNotes } : {}),
+        ...(record.diveType ? { dive_type: record.diveType } : {}),
+        ...(record.depth ? { depth: Number(record.depth) } : {}),
+        ...(record.imageUrl ? { image_url: record.imageUrl } : {}),
+      };
+
+      // Only add the dive_site_id if it's a valid UUID
+      if (
+        record.diveSiteId &&
+        typeof record.diveSiteId === 'string' &&
+        record.diveSiteId.length > 10 && // Simple validation - UUIDs are long
+        record.diveSiteId.includes('-')
+      ) {
+        // UUIDs typically have hyphens
+        simplifiedData['dive_site_id'] = record.diveSiteId;
+      }
+
+      console.log(
+        'Attempting to sync with data:',
+        JSON.stringify(simplifiedData)
+      );
+
+      const { error } = await supabase
+        .from('sightings')
+        .insert([simplifiedData]);
+
+      if (error) {
+        console.error('Error syncing with server:', error);
+        return false;
+      }
+
+      // Update local record as synced safely
+      await database.write(async () => {
+        await localRecord.update((record) => {
+          // Use the safer approach to only update fields that exist
+          const availableFields = Object.keys(record);
+          const anyRecord = record as any;
+
+          if (availableFields.includes('isSynced')) {
+            anyRecord.isSynced = true;
+          }
+        });
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error in sync process:', error);
+      return false;
+    }
+  };
+
+  const scheduleSyncJob = async (localIds: string[]) => {
+    try {
+      // Get any existing sync jobs
+      const existingJobs = await AsyncStorage.getItem('@sync_jobs');
+      const syncJobs = existingJobs ? JSON.parse(existingJobs) : [];
+
+      // Add new IDs to sync
+      const updatedJobs = [...syncJobs, ...localIds];
+
+      // Save back to storage
+      await AsyncStorage.setItem('@sync_jobs', JSON.stringify(updatedJobs));
+
+      console.log('Scheduled sync jobs for later:', localIds);
+    } catch (error) {
+      console.error('Error scheduling sync jobs:', error);
+    }
+  };
+
   const saveDive = async () => {
     if (!user) return Alert.alert('Login required');
     if (!selectedDiveSite) return setError('Please select a dive site');
@@ -269,155 +363,85 @@ export default function LogDiveScreen() {
 
     try {
       setLoading(true);
+      setError(null);
+
       const formattedTime =
         timeOfDay && timeOfDay.length === 5
           ? `${timeOfDay}:00`
           : timeOfDay || '12:00:00';
 
-      let successes = 0;
-      let lastError = null;
+      const diveDetails: DiveDetails = {
+        date,
+        timeOfDay: formattedTime,
+        diveType: diveType || null,
+        depth: depth ? Number(depth) : null,
+        globalNotes: globalNotes || null,
+      };
 
-      // For each creature, create a sighting entry
+      // Track successful saves and sync attempts
+      let localSuccesses = 0;
+      let syncSuccesses = 0;
+      let localIds: string[] = [];
+
+      // First, save all creatures to local database
       for (const creature of creatureSightings) {
         try {
-          // Try with the new schema first
-          const newSchemaData = {
-            user_id: user.id,
-            creature_id: creature.id,
-            dive_site_id: selectedDiveSite.id,
-            dive_site_name: selectedDiveSite.name,
-            dive_site_location: selectedDiveSite.location,
-            dive_type: diveType || null,
-            time_of_day: formattedTime,
-            depth: depth ? Number(depth) : null,
-            date,
-            dive_notes: globalNotes || null,
-            creature_notes: creature.notes || null,
-            image_url: creature.imageUri || null,
-            // Provide location for compatibility
-            location: `${selectedDiveSite.name}, ${selectedDiveSite.location}`,
-          };
+          const localId = await saveDiveToLocalDB(creature, diveDetails);
+          localIds.push(localId);
+          localSuccesses++;
+        } catch (error) {
+          console.error('Error saving creature locally:', error);
+        }
+      }
 
-          const { error } = await supabase
-            .from('sightings')
-            .insert([newSchemaData]);
-
-          if (error) {
-            console.log('Error with new schema:', error);
-
-            if (
-              error.code === 'PGRST204' &&
-              error.message.includes('creature_notes')
-            ) {
-              // Fall back to old schema if creature_notes column doesn't exist
-              console.log('Falling back to old schema');
-              // Combine notes into a single field
-              const combinedNotes = `${
-                globalNotes ? globalNotes + '\n\n' : ''
-              }${creature.notes || ''}`;
-
-              const oldSchemaData = {
-                user_id: user.id,
-                creature_id: creature.id,
-                location: `${selectedDiveSite.name}, ${selectedDiveSite.location}`,
-                date,
-                notes: combinedNotes,
-                image_url: creature.imageUri || null,
-              };
-
-              const { error: oldError } = await supabase
-                .from('sightings')
-                .insert([oldSchemaData]);
-              if (oldError) {
-                console.log('Error with old schema:', oldError);
-                lastError = oldError;
-                // Continue to try with next creature
-                continue;
-              }
-            } else if (
-              error.code === 'PGRST204' &&
-              error.message.includes('dive_site_id')
-            ) {
-              // If dive_site_id column doesn't exist
-              console.log('Falling back to location-only schema');
-
-              const locationSchemaData = {
-                user_id: user.id,
-                creature_id: creature.id,
-                location: `${selectedDiveSite.name}, ${selectedDiveSite.location}`,
-                date,
-                notes: globalNotes || null,
-                image_url: creature.imageUri || null,
-              };
-
-              const { error: locError } = await supabase
-                .from('sightings')
-                .insert([locationSchemaData]);
-              if (locError) {
-                console.log('Error with location schema:', locError);
-                lastError = locError;
-                // Continue to try with next creature
-                continue;
-              }
-            } else {
-              lastError = error;
-              // Continue to try with next creature
-              continue;
-            }
+      // If network available, try to sync with server
+      if (isConnected) {
+        for (const localId of localIds) {
+          const success = await syncWithServer(localId);
+          if (success) {
+            syncSuccesses++;
           }
-
-          // If we got here, the insert succeeded
-          successes++;
-        } catch (creatureError: any) {
-          console.error('Error adding creature sighting:', creatureError);
-          lastError = creatureError;
-          // Continue to try with next creature
         }
       }
 
-      if (successes > 0) {
-        if (successes < creatureSightings.length) {
-          Alert.alert(
-            'Partial Success',
-            `${successes} out of ${creatureSightings.length} creatures were logged successfully.`,
-            [{ text: 'OK', onPress: () => router.back() }]
-          );
-        } else {
-          Alert.alert('Success', 'Dive logged successfully!');
-          router.back();
-        }
-        setSelectedCreatures([]); // Clear the selected creatures
+      // If not all records synced, schedule them for later
+      if (syncSuccesses < localIds.length) {
+        const unsynced = localIds.filter((_, index) => index >= syncSuccesses);
+        await scheduleSyncJob(unsynced);
+      }
+
+      // Show appropriate message based on outcome
+      if (localSuccesses === 0) {
+        throw new Error('Failed to save any dive logs');
+      } else if (isConnected && syncSuccesses === 0) {
+        Alert.alert(
+          'Saved Locally',
+          `All ${localSuccesses} creatures were saved to your device but could not be uploaded to the server. They will sync automatically when connection is available.`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else if (isConnected && syncSuccesses < localSuccesses) {
+        Alert.alert(
+          'Partial Sync',
+          `All ${localSuccesses} creatures were saved locally, but only ${syncSuccesses} were synced with the server. The rest will sync when connection improves.`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else if (isConnected && syncSuccesses === localSuccesses) {
+        Alert.alert('Success', 'Dive log saved and synced successfully!', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
       } else {
-        // No creatures were added successfully
-        throw lastError || new Error('Failed to add any creatures');
+        Alert.alert(
+          'Saved Offline',
+          'Your dive log has been saved to your device and will sync when you have internet connection.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
       }
+
+      // Clear selected creatures
+      setSelectedCreatures([]);
     } catch (e: any) {
       console.error('Final error:', e);
-      let errorMessage = 'Failed to log dive';
-
-      if (e?.message) {
-        errorMessage = e.message;
-      }
-
-      if (e?.code === 'PGRST204') {
-        errorMessage =
-          'Database schema issue. Please update your database or contact support.';
-      }
-
-      if (
-        e?.code === '42702' ||
-        (e?.message && e?.message.includes('ambiguous'))
-      ) {
-        errorMessage =
-          'Database trigger issue. The system needs to be updated to handle achievement tracking correctly.';
-      }
-
-      if (String(e).includes('Cannot read property')) {
-        errorMessage =
-          'There was a problem with the data format. Please try again or contact support.';
-      }
-
-      setError(errorMessage);
+      setError(e.message || 'Failed to log dive');
     } finally {
       setLoading(false);
     }
@@ -440,6 +464,14 @@ export default function LogDiveScreen() {
           <View style={styles.placeholder} />
         </View>
 
+        {isConnected === false && (
+          <View style={styles.offlineBar}>
+            <Text style={styles.offlineText}>
+              You are offline. Dive logs will be saved locally.
+            </Text>
+          </View>
+        )}
+
         <ScrollView
           style={styles.content}
           contentContainerStyle={{ paddingBottom: 200 }}
@@ -448,15 +480,11 @@ export default function LogDiveScreen() {
 
           {/* Dive Site Selector */}
           <Text style={styles.label}>Dive Site</Text>
-          <TouchableOpacity
-            style={styles.siteSelector}
-            onPress={() => setShowDiveSiteModal(true)}
-          >
-            <MapPin size={20} color="#0077B6" style={styles.selectorIcon} />
-            <Text style={styles.selectorText}>
-              {selectedDiveSite ? selectedDiveSite.name : 'Select a dive site'}
-            </Text>
-          </TouchableOpacity>
+          <DiveSiteSelector
+            selectedDiveSite={selectedDiveSite}
+            onSelectDiveSite={setSelectedDiveSite}
+            customFetchFunction={fetchDiveSites}
+          />
 
           <Text style={styles.label}>Dive Type</Text>
           <TouchableOpacity
@@ -600,7 +628,9 @@ export default function LogDiveScreen() {
             {loading ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text style={styles.saveButtonText}>Save Dive Log</Text>
+              <Text style={styles.saveButtonText}>
+                {isConnected ? 'Save Dive Log' : 'Save Offline'}
+              </Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -636,122 +666,6 @@ export default function LogDiveScreen() {
                   />
                 ))}
               </Picker>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Dive Site Selection Modal */}
-        <Modal
-          visible={showDiveSiteModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowDiveSiteModal(false)}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.siteModalContent}>
-              <View style={styles.pickerHeader}>
-                <Text style={styles.pickerTitle}>Select Dive Site</Text>
-                <TouchableOpacity
-                  onPress={() => setShowDiveSiteModal(false)}
-                  style={styles.closeButton}
-                >
-                  <X size={24} color="#0077B6" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.searchContainer}>
-                <Search size={20} color="#666" style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search dive sites..."
-                  value={searchTerm}
-                  onChangeText={handleSearch}
-                  placeholderTextColor="#666"
-                />
-                {searchTerm.length > 0 && (
-                  <TouchableOpacity onPress={() => handleSearch('')}>
-                    <X size={18} color="#666" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {isCustomDiveSite ? (
-                <View style={styles.customSiteForm}>
-                  <Text style={styles.customFormTitle}>
-                    Add Custom Dive Site
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Dive Site Name"
-                    value={customDiveSiteName}
-                    onChangeText={setCustomDiveSiteName}
-                    placeholderTextColor="#666"
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Location (e.g. Bahamas, Caribbean)"
-                    value={customDiveSiteLocation}
-                    onChangeText={setCustomDiveSiteLocation}
-                    placeholderTextColor="#666"
-                  />
-                  <View style={styles.customFormButtons}>
-                    <TouchableOpacity
-                      style={[styles.customFormButton, styles.cancelButton]}
-                      onPress={() => setIsCustomDiveSite(false)}
-                    >
-                      <Text style={styles.customButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.customFormButton, styles.addButton]}
-                      onPress={addCustomDiveSite}
-                    >
-                      <Text style={styles.customButtonText}>Add Site</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <FlatList
-                    data={filteredDiveSites}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.siteItem}
-                        onPress={() => selectDiveSite(item)}
-                      >
-                        <View style={styles.siteInfo}>
-                          <Text style={styles.siteName}>{item.name}</Text>
-                          <Text style={styles.siteLocation}>
-                            {item.location}
-                          </Text>
-                          {item.type && (
-                            <View style={styles.siteTypeTag}>
-                              <Text style={styles.siteTypeText}>
-                                {item.type}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    ListEmptyComponent={
-                      <Text style={styles.noResultsText}>
-                        No dive sites found
-                      </Text>
-                    }
-                    style={styles.siteList}
-                  />
-
-                  <TouchableOpacity
-                    style={styles.addCustomButton}
-                    onPress={() => setIsCustomDiveSite(true)}
-                  >
-                    <Text style={styles.addCustomText}>
-                      Add Custom Dive Site
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
             </View>
           </View>
         </Modal>
@@ -956,135 +870,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  siteSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 15,
-  },
-  selectorIcon: {
-    marginRight: 10,
-  },
-  selectorText: {
-    color: '#CCC',
-    flex: 1,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 15,
-  },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
-    flex: 1,
-    color: 'white',
-    fontSize: 16,
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  pickerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  closeButton: {
-    padding: 5,
-  },
-  siteList: {
-    flex: 1,
-    marginBottom: 15,
-  },
-  siteItem: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 10,
-  },
-  siteInfo: {
-    flex: 1,
-  },
-  siteName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 5,
-  },
-  siteLocation: {
-    fontSize: 14,
-    color: '#AAAAAA',
-    marginBottom: 8,
-  },
-  siteTypeTag: {
-    backgroundColor: '#0077B6',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  siteTypeText: {
-    color: 'white',
-    fontSize: 12,
-  },
-  noResultsText: {
-    color: '#AAAAAA',
-    textAlign: 'center',
-    padding: 20,
-  },
-  addCustomButton: {
-    backgroundColor: '#0077B6',
-    borderRadius: 8,
-    padding: 15,
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  addCustomText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  customSiteForm: {
-    flex: 1,
-  },
-  customFormTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 15,
-  },
-  customFormButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  customFormButton: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 8,
+  offlineBar: {
+    backgroundColor: '#FF4444',
+    padding: 8,
     alignItems: 'center',
   },
-  cancelButton: {
-    backgroundColor: '#444444',
-    marginRight: 10,
-  },
-  customButtonText: {
+  offlineText: {
     color: 'white',
     fontWeight: 'bold',
-  },
-  siteModalContent: {
-    backgroundColor: '#1E1E1E',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '85%',
   },
 });
